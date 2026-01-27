@@ -3,7 +3,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 
-type PanelId = 'tools' | 'legend' | 'attributes' | 'ai' | 'trello' | 'wfsLibrary' | 'help' | 'printComposer' | 'gee' | 'statistics' | 'analysis' | 'clima';
+type PanelId = 'tools' | 'legend' | 'attributes' | 'trello' | 'wfsLibrary' | 'help' | 'printComposer' | 'gee' | 'statistics' | 'analysis' | 'clima';
 
 interface PanelState {
   isMinimized: boolean;
@@ -16,7 +16,6 @@ interface UseFloatingPanelsProps {
   toolsPanelRef: React.RefObject<HTMLDivElement>;
   legendPanelRef: React.RefObject<HTMLDivElement>;
   attributesPanelRef: React.RefObject<HTMLDivElement>;
-  aiPanelRef: React.RefObject<HTMLDivElement>;
   trelloPanelRef: React.RefObject<HTMLDivElement>;
   wfsLibraryPanelRef: React.RefObject<HTMLDivElement>;
   helpPanelRef: React.RefObject<HTMLDivElement>;
@@ -44,7 +43,7 @@ const panelCascadeOrder: PanelId[] = [
     'printComposer', 
     'gee',
     'statistics',
-    // 'ai' and 'help' are handled separately on the right side
+    // 'help' is handled separately on the right side
 ];
 
 
@@ -52,7 +51,6 @@ export const useFloatingPanels = ({
   toolsPanelRef,
   legendPanelRef,
   attributesPanelRef,
-  aiPanelRef,
   trelloPanelRef,
   wfsLibraryPanelRef,
   helpPanelRef,
@@ -70,7 +68,6 @@ export const useFloatingPanels = ({
     tools: toolsPanelRef,
     legend: legendPanelRef,
     attributes: attributesPanelRef,
-    ai: aiPanelRef,
     trello: trelloPanelRef,
     wfsLibrary: wfsLibraryPanelRef,
     help: helpPanelRef,
@@ -79,7 +76,7 @@ export const useFloatingPanels = ({
     statistics: statisticsPanelRef,
     analysis: analysisPanelRef,
     clima: climaPanelRef,
-  }), [attributesPanelRef, aiPanelRef, legendPanelRef, toolsPanelRef, trelloPanelRef, wfsLibraryPanelRef, helpPanelRef, printComposerPanelRef, geePanelRef, statisticsPanelRef, analysisPanelRef, climaPanelRef]);
+  }), [attributesPanelRef, legendPanelRef, toolsPanelRef, trelloPanelRef, wfsLibraryPanelRef, helpPanelRef, printComposerPanelRef, geePanelRef, statisticsPanelRef, analysisPanelRef, climaPanelRef]);
   
   const [panels, setPanels] = useState<Record<PanelId, PanelState>>({
       // Start with minimized panels off-screen or at a default position to avoid hydration errors.
@@ -94,20 +91,19 @@ export const useFloatingPanels = ({
       statistics: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
       analysis: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
       clima: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
-      ai: { isMinimized: false, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex + 3 },
       help: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
   });
 
 
   const activeDragRef = useRef<{ panelId: PanelId | null, offsetX: number, offsetY: number }>({ panelId: null, offsetX: 0, offsetY: 0 });
-  const zIndexCounterRef = useRef(initialZIndex + 3); // Start above AI panel
+  const zIndexCounterRef = useRef(initialZIndex + 3); // Start above initial panels
   
   useEffect(() => {
     // This effect runs once after the component mounts on the client.
     // It sets the initial positions, preventing hydration mismatch.
     if (mapAreaRef.current) {
         const mapWidth = mapAreaRef.current.clientWidth;
-        const aiPanelX = mapWidth - panelWidth - panelPadding;
+        const rightPanelX = mapWidth - panelWidth - panelPadding;
         
         setPanels(prev => ({
             ...prev,
@@ -121,8 +117,7 @@ export const useFloatingPanels = ({
             statistics: { ...prev.statistics, position: { x: panelPadding, y: panelPadding } },
             analysis: { ...prev.analysis, position: { x: panelPadding, y: panelPadding } },
             clima: { ...prev.clima, position: { x: panelPadding, y: panelPadding } },
-            ai: { ...prev.ai, position: { x: aiPanelX, y: panelPadding } },
-            help: { ...prev.help, position: { x: aiPanelX, y: panelPadding } },
+            help: { ...prev.help, position: { x: rightPanelX, y: panelPadding } },
         }));
     }
   }, [mapAreaRef, panelWidth, panelPadding]);
@@ -194,7 +189,7 @@ export const useFloatingPanels = ({
         let newZIndex = currentPanelState.zIndex;
 
         // If restoring a panel, calculate its new cascaded position
-        if (newIsMinimized === false && panelId !== 'legend' && panelId !== 'ai' && panelId !== 'help') {
+        if (newIsMinimized === false && panelId !== 'legend' && panelId !== 'help') {
             const openCascadePanelsCount = panelCascadeOrder
                 .filter(id => id !== panelId && !prev[id].isMinimized)
                 .length;

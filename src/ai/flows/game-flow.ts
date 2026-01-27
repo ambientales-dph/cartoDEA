@@ -1,114 +1,244 @@
+"use client";
 
-'use server';
-/**
- * @fileOverview Game logic flows for "Operación: Despliegue".
- *
- * - onboardNewAgent - Creates a profile for a new agent with a random starting location.
- */
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 
-import { ai } from '@/ai/genkit';
-import { z } from 'zod';
-import type { NominatimResult } from '@/lib/types';
-import { get } from 'ol/proj';
+type PanelId = 'tools' | 'legend' | 'attributes' | 'trello' | 'wfsLibrary' | 'help' | 'printComposer' | 'gee' | 'statistics' | 'analysis' | 'clima';
 
-// Define tools required for game logic
-
-const getBuenosAiresTownTool = ai.defineTool(
-  {
-    name: 'getBuenosAiresTown',
-    description:
-      'Busca una ciudad, pueblo o paraje aleatorio dentro de los límites de la Provincia de Buenos Aires, Argentina, y devuelve sus coordenadas.',
-    inputSchema: z.object({}),
-    outputSchema: z.object({
-      name: z.string().describe('El nombre de la localidad encontrada.'),
-      lat: z.number().describe('La latitud de la localidad.'),
-      lon: z.number().describe('La longitud de la localidad.'),
-    }),
-  },
-  async () => {
-    // Overpass query to find a random node tagged as a town, village, or hamlet within Buenos Aires.
-    // The query is structured to be robust.
-    const query = `
-      [out:json][timeout:25];
-      (
-        area["name"="Buenos Aires"]["boundary"="administrative"]["admin_level"="4"];
-      )->.searchArea;
-      (
-        node["place"~"^(town|village|hamlet)$"](area.searchArea);
-      );
-      out 1;
-    `;
-    try {
-      const response = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: `data=${encodeURIComponent(query)}`,
-      });
-      if (!response.ok) {
-        throw new Error(`Overpass API request failed with status ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.elements && data.elements.length > 0) {
-        const randomTown =
-          data.elements[Math.floor(Math.random() * data.elements.length)];
-        return {
-          name: randomTown.tags.name || 'Localidad sin nombre',
-          lat: randomTown.lat,
-          lon: randomTown.lon,
-        };
-      }
-      throw new Error('No towns found in Buenos Aires province via Overpass API.');
-    } catch (error) {
-      console.error('Error in getBuenosAiresTownTool:', error);
-      // Fallback in case Overpass fails
-      return {
-        name: 'La Plata (Fallback)',
-        lat: -34.9214,
-        lon: -57.9545,
-      };
-    }
-  }
-);
-
-
-// Schema for the onboarding flow
-const OnboardAgentInputSchema = z.object({
-  preferredNickname: z.string().describe("The agent's preferred nickname, usually from their auth profile."),
-});
-
-const OnboardAgentOutputSchema = z.object({
-    nickname: z.string().describe('The final nickname for the agent.'),
-    center: z.object({
-        lat: z.number(),
-        lon: z.number(),
-    }).describe("The geographic center of the agent's new deployment base.")
-});
-
-export async function onboardNewAgent(input: z.infer<typeof OnboardAgentInputSchema>): Promise<z.infer<typeof OnboardAgentOutputSchema>> {
-  return onboardAgentFlow(input);
+interface PanelState {
+  isMinimized: boolean;
+  isCollapsed: boolean;
+  position: { x: number; y: number };
+  zIndex: number;
 }
 
+interface UseFloatingPanelsProps {
+  toolsPanelRef: React.RefObject<HTMLDivElement>;
+  legendPanelRef: React.RefObject<HTMLDivElement>;
+  attributesPanelRef: React.RefObject<HTMLDivElement>;
+  trelloPanelRef: React.RefObject<HTMLDivElement>;
+  wfsLibraryPanelRef: React.RefObject<HTMLDivElement>;
+  helpPanelRef: React.RefObject<HTMLDivElement>;
+  printComposerPanelRef: React.RefObject<HTMLDivElement>;
+  geePanelRef: React.RefObject<HTMLDivElement>;
+  statisticsPanelRef: React.RefObject<HTMLDivElement>;
+  analysisPanelRef: React.RefObject<HTMLDivElement>;
+  climaPanelRef: React.RefObject<HTMLDivElement>;
+  mapAreaRef: React.RefObject<HTMLDivElement>;
+  panelWidth: number;
+  panelPadding: number;
+}
 
-// The main flow for onboarding a new agent
-const onboardAgentFlow = ai.defineFlow(
-  {
-    name: 'onboardAgentFlow',
-    inputSchema: OnboardAgentInputSchema,
-    outputSchema: OnboardAgentOutputSchema,
-  },
-  async ({ preferredNickname }) => {
-    
-    const location = await getBuenosAiresTownTool({});
-    
-    // Simple logic for now, but could be expanded.
-    const nickname = preferredNickname.split(' ')[0];
+const initialZIndex = 30;
+const CASCADE_OFFSET = 40; // The 40px offset for cascading panels
 
-    return {
-      nickname,
-      center: {
-        lat: location.lat,
-        lon: location.lon,
-      },
+// This defines the order in which panels will cascade. 'legend' is excluded as it's fixed.
+const panelCascadeOrder: PanelId[] = [
+    'wfsLibrary', 
+    'tools', 
+    'analysis',
+    'clima',
+    'trello', 
+    'attributes', 
+    'printComposer', 
+    'gee',
+    'statistics',
+    // 'help' is handled separately on the right side
+];
+
+
+export const useFloatingPanels = ({
+  toolsPanelRef,
+  legendPanelRef,
+  attributesPanelRef,
+  trelloPanelRef,
+  wfsLibraryPanelRef,
+  helpPanelRef,
+  printComposerPanelRef,
+  geePanelRef,
+  statisticsPanelRef,
+  analysisPanelRef,
+  climaPanelRef,
+  mapAreaRef,
+  panelWidth,
+  panelPadding
+}: UseFloatingPanelsProps) => {
+
+  const panelRefs = useMemo(() => ({
+    tools: toolsPanelRef,
+    legend: legendPanelRef,
+    attributes: attributesPanelRef,
+    trello: trelloPanelRef,
+    wfsLibrary: wfsLibraryPanelRef,
+    help: helpPanelRef,
+    printComposer: printComposerPanelRef,
+    gee: geePanelRef,
+    statistics: statisticsPanelRef,
+    analysis: analysisPanelRef,
+    clima: climaPanelRef,
+  }), [attributesPanelRef, legendPanelRef, toolsPanelRef, trelloPanelRef, wfsLibraryPanelRef, helpPanelRef, printComposerPanelRef, geePanelRef, statisticsPanelRef, analysisPanelRef, climaPanelRef]);
+  
+  const [panels, setPanels] = useState<Record<PanelId, PanelState>>({
+      // Start with minimized panels off-screen or at a default position to avoid hydration errors.
+      // Positions will be set correctly on mount.
+      legend: { isMinimized: false, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex + 2 },
+      wfsLibrary: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      tools: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      trello: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      attributes: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      printComposer: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      gee: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      statistics: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      analysis: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      clima: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      help: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+  });
+
+
+  const activeDragRef = useRef<{ panelId: PanelId | null, offsetX: number, offsetY: number }>({ panelId: null, offsetX: 0, offsetY: 0 });
+  const zIndexCounterRef = useRef(initialZIndex + 3); // Start above initial panels
+  
+  useEffect(() => {
+    // This effect runs once after the component mounts on the client.
+    // It sets the initial positions, preventing hydration mismatch.
+    if (mapAreaRef.current) {
+        const mapWidth = mapAreaRef.current.clientWidth;
+        const rightPanelX = mapWidth - panelWidth - panelPadding;
+        
+        setPanels(prev => ({
+            ...prev,
+            legend: { ...prev.legend, position: { x: panelPadding, y: panelPadding } },
+            wfsLibrary: { ...prev.wfsLibrary, position: { x: panelPadding, y: panelPadding } },
+            tools: { ...prev.tools, position: { x: panelPadding, y: panelPadding } },
+            trello: { ...prev.trello, position: { x: panelPadding, y: panelPadding } },
+            attributes: { ...prev.attributes, position: { x: panelPadding, y: panelPadding } },
+            printComposer: { ...prev.printComposer, position: { x: panelPadding, y: panelPadding } },
+            gee: { ...prev.gee, position: { x: panelPadding, y: panelPadding } },
+            statistics: { ...prev.statistics, position: { x: panelPadding, y: panelPadding } },
+            analysis: { ...prev.analysis, position: { x: panelPadding, y: panelPadding } },
+            clima: { ...prev.clima, position: { x: panelPadding, y: panelPadding } },
+            help: { ...prev.help, position: { x: rightPanelX, y: panelPadding } },
+        }));
+    }
+  }, [mapAreaRef, panelWidth, panelPadding]);
+
+
+  const bringToFront = useCallback((panelId: PanelId) => {
+    zIndexCounterRef.current += 1;
+    setPanels(prev => ({
+      ...prev,
+      [panelId]: { ...prev[panelId], zIndex: zIndexCounterRef.current }
+    }));
+  }, []);
+
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    const { panelId, offsetX, offsetY } = activeDragRef.current;
+    if (!panelId) return;
+
+    const mapArea = mapAreaRef.current;
+    const panelRef = panelRefs[panelId].current;
+    if (!mapArea || !panelRef) return;
+
+    const mapRect = mapArea.getBoundingClientRect();
+    let newX = event.clientX - mapRect.left - offsetX;
+    let newY = event.clientY - mapRect.top - offsetY;
+
+    setPanels(prev => ({
+      ...prev,
+      [panelId]: { ...prev[panelId], position: { x: newX, y: newY } }
+    }));
+  }, [mapAreaRef, panelRefs]);
+
+  const handleMouseUp = useCallback(() => {
+    activeDragRef.current = { panelId: null, offsetX: 0, offsetY: 0 };
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  }, [handleMouseMove]);
+  
+  const handlePanelMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>, panelId: PanelId) => {
+    const panelRef = panelRefs[panelId].current;
+    if (!panelRef) return;
+    
+    bringToFront(panelId);
+
+    const rect = panelRef.getBoundingClientRect();
+    activeDragRef.current = {
+      panelId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
     };
-  }
-);
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    event.preventDefault();
+  }, [panelRefs, bringToFront, handleMouseMove, handleMouseUp]);
 
+  const togglePanelCollapse = useCallback((panelId: PanelId) => {
+    setPanels(prev => ({
+      ...prev,
+      [panelId]: { ...prev[panelId], isCollapsed: !prev[panelId].isCollapsed }
+    }));
+  }, []);
+  
+  const togglePanelMinimize = useCallback((panelId: PanelId) => {
+    setPanels(prev => {
+        const currentPanelState = prev[panelId];
+        const newIsMinimized = !currentPanelState.isMinimized;
+        
+        let newPosition = currentPanelState.position;
+        let newZIndex = currentPanelState.zIndex;
+
+        // If restoring a panel, calculate its new cascaded position
+        if (newIsMinimized === false && panelId !== 'legend' && panelId !== 'help') {
+            const openCascadePanelsCount = panelCascadeOrder
+                .filter(id => id !== panelId && !prev[id].isMinimized)
+                .length;
+            
+            // The cascade starts from 1 * offset, so it doesn't overlap the legend panel
+            const cascadeStep = openCascadePanelsCount + 1;
+
+            newPosition = {
+                x: panelPadding + (cascadeStep * CASCADE_OFFSET),
+                y: panelPadding + (cascadeStep * CASCADE_OFFSET),
+            };
+        }
+        
+        // Bring to front when restoring
+        if (!newIsMinimized) {
+            zIndexCounterRef.current += 1;
+            newZIndex = zIndexCounterRef.current;
+        }
+
+        return {
+            ...prev,
+            [panelId]: { 
+                ...currentPanelState, 
+                isMinimized: newIsMinimized,
+                position: newPosition,
+                zIndex: newZIndex 
+            }
+        };
+    });
+  }, [panelPadding]);
+
+  useEffect(() => {
+    const mm = (e: MouseEvent) => handleMouseMove(e);
+    const mu = (e: MouseEvent) => handleMouseUp();
+    
+    // Add event listeners with proper types
+    document.addEventListener('mousemove', mm);
+    document.addEventListener('mouseup', mu);
+    
+    return () => {
+      // Clean up event listeners
+      document.removeEventListener('mousemove', mm);
+      document.removeEventListener('mouseup', mu);
+    };
+  }, [handleMouseMove, handleMouseUp]);
+  
+  return {
+    panels,
+    handlePanelMouseDown,
+    togglePanelCollapse,
+    togglePanelMinimize,
+  };
+};

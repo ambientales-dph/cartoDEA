@@ -7,7 +7,6 @@ import {
   Wrench,
   ListTree,
   ListChecks,
-  Sparkles,
   ClipboardCheck,
   Library,
   LifeBuoy,
@@ -254,7 +253,6 @@ const panelToggleConfigs = [
   { id: 'trello', IconComponent: ClipboardCheck, name: 'Trello' },
   { id: 'printComposer', IconComponent: Printer, name: 'Impresión' },
   { id: 'gee', IconComponent: BrainCircuit, name: 'Procesamiento GEE' },
-  { id: 'ai', IconComponent: Sparkles, name: 'Asistente IA' },
   { id: 'help', IconComponent: LifeBuoy, name: 'Ayuda' },
 ];
 
@@ -268,7 +266,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const toolsPanelRef = useRef<HTMLDivElement>(null);
   const legendPanelRef = useRef<HTMLDivElement>(null);
   const attributesPanelRef = useRef<HTMLDivElement>(null);
-  const aiPanelRef = useRef<HTMLDivElement>(null);
   const trelloPanelRef = useRef<HTMLDivElement>(null);
   const wfsLibraryPanelRef = useRef<HTMLDivElement>(null);
   const helpPanelRef = useRef<HTMLDivElement>(null);
@@ -312,7 +309,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       toolsPanelRef,
       legendPanelRef,
       attributesPanelRef,
-      aiPanelRef,
       trelloPanelRef,
       wfsLibraryPanelRef,
       helpPanelRef,
@@ -375,13 +371,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [discoveredGeoServerLayers, setDiscoveredGeoServerLayers] = useState<
     GeoServerDiscoveredLayer[]
   >([]);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content:
-        '¡Buenas! Soy Drax, tu asistente de mapas. Pedime que cargue una capa, que la saque o que le haga zoom.',
-    },
-  ]);
+
   const [printLayoutImage, setPrintLayoutImage] = useState<string | null>(null);
   const [isGeeAuthenticated, setIsGeeAuthenticated] = useState(false);
   const [isGeeAuthenticating, setIsGeeAuthenticating] = useState(true);
@@ -642,206 +632,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       zoomToBoundingBox([wLon, sLat, eLon, nLat]);
     },
     [zoomToBoundingBox]
-  );
-
-  const handleAiAction = useCallback(
-    (action: MapAssistantOutput) => {
-      if (action.response) {
-        if (
-          /(carg|busc|añad|mostr|quit|elimin|zoom|estilo|tabla|mapa|base|sentinel|landsat|trello)/i.test(
-            action.response
-          ) &&
-          ![
-            action.layersToAdd,
-            action.layersToAddAsWFS,
-            action.layersToRemove,
-            action.layersToStyle,
-            action.zoomToLayer,
-            action.showTableForLayer,
-            action.setBaseLayer,
-            action.zoomToBoundingBox,
-            action.findSentinel2Footprints,
-            action.findLandsatFootprints,
-            action.fetchOsmForView,
-            action.urlToOpen,
-          ].some((field) => field && (Array.isArray(field) ? field.length > 0 : true))
-        ) {
-          toast({
-            title: 'Drax no identificó una acción',
-            description:
-              'No se encontró una capa o acción que coincida con tu pedido. Intenta ser más específico.',
-            variant: 'destructive',
-            duration: 6000,
-          });
-        }
-      }
-
-      const layersToAdd = (action.layersToAdd || []).concat(
-        action.layersToAddAsWFS || []
-      );
-      if (layersToAdd.length > 0) {
-        layersToAdd.forEach((layerNameToAdd) => {
-          const layerData = discoveredGeoServerLayers.find(
-            (l) => l.name === layerNameToAdd
-          );
-          if (layerData) {
-            layerManagerHook.handleAddHybridLayer(
-              layerData.name,
-              layerData.title,
-              initialGeoServerUrl,
-              layerData.bbox,
-              layerData.styleName
-            );
-          } else {
-            toast({
-              title: 'Capa no encontrada',
-              description: `Drax intentó añadir una capa que no existe: "${layerNameToAdd}"`,
-              variant: 'destructive',
-            });
-          }
-        });
-      }
-
-      if (action.layersToRemove && action.layersToRemove.length > 0) {
-        action.layersToRemove.forEach((layerNameToRemove) => {
-          const layerToRemove = layerManagerHook.layers.find((l) => {
-            if ('layers' in l) return false;
-            const machineName = l.olLayer.get('gsLayerName') || l.name;
-            return machineName === layerNameToRemove;
-          });
-          if (layerToRemove) {
-            layerManagerHook.removeLayer(layerToRemove.id);
-          } else {
-            toast({
-              description: `Drax intentó eliminar una capa no encontrada: ${layerNameToRemove}`,
-            });
-          }
-        });
-      }
-
-      if (action.zoomToLayer) {
-        const layerToZoom = layerManagerHook.layers.find((l) => {
-          if ('layers' in l) return false;
-          const machineName = l.olLayer.get('gsLayerName') || l.name;
-          return machineName === action.zoomToLayer;
-        });
-        if (layerToZoom) {
-          layerManagerHook.zoomToLayerExtent(layerToZoom.id);
-        } else {
-          toast({
-            description: `Drax intentó hacer zoom a una capa no encontrada: ${action.zoomToLayer}`,
-          });
-        }
-      }
-
-      if (action.layersToStyle && action.layersToStyle.length > 0) {
-        action.layersToStyle.forEach((styleRequest) => {
-          const layerToStyle = layerManagerHook.layers.find((l) => {
-            if ('layers' in l) return false;
-            const machineName = l.olLayer.get('gsLayerName') || l.name;
-            return machineName === styleRequest.layerName;
-          });
-          if (layerToStyle) {
-            layerManagerHook.changeLayerStyle(layerToStyle.id, {
-              strokeColor: styleRequest.strokeColor,
-              fillColor: styleRequest.fillColor,
-              lineStyle: styleRequest.lineStyle,
-              lineWidth: styleRequest.lineWidth,
-              pointSize: 5,
-            });
-          } else {
-            toast({
-              description: `Drax intentó aplicar un estilo a una capa no encontrada: ${styleRequest.layerName}`,
-            });
-          }
-        });
-      }
-
-      if (action.showTableForLayer) {
-        const layerToShowTable = layerManagerHook.layers.find((l) => {
-          if ('layers' in l) return false;
-          const machineName = l.olLayer.get('gsLayerName') || l.name;
-          return machineName === action.showTableForLayer;
-        });
-        if (layerToShowTable) {
-          layerManagerHook.handleShowLayerTable(layerToShowTable.id);
-        } else {
-          toast({
-            description: `Drax intentó mostrar la tabla de una capa no encontrada: ${action.showTableForLayer}`,
-          });
-        }
-      }
-
-      if (action.setBaseLayer) {
-        handleChangeBaseLayer(action.setBaseLayer);
-      }
-
-      const shouldZoom =
-        action.zoomToBoundingBox && action.zoomToBoundingBox.length === 4;
-      const shouldFindSentinelFootprints = !!action.findSentinel2Footprints;
-      const shouldFindLandsatFootprints = !!action.findLandsatFootprints;
-      const shouldFetchOsm =
-        action.fetchOsmForView && action.fetchOsmForView.length > 0;
-
-      const performSearchAfterZoom = () => {
-        if (action.findSentinel2Footprints) {
-          layerManagerHook.findSentinel2FootprintsInCurrentView(
-            action.findSentinel2Footprints
-          );
-        }
-        if (action.findLandsatFootprints) {
-          layerManagerHook.findLandsatFootprintsInCurrentView(
-            action.findLandsatFootprints
-          );
-        }
-        if (action.fetchOsmForView) {
-          osmDataHook.fetchOSMData();
-        }
-      };
-
-      if (shouldZoom) {
-        const [sLat, nLat, wLon, eLon] = action.zoomToBoundingBox!;
-        if ([sLat, nLat, wLon, eLon].every((c) => !isNaN(c))) {
-          const afterZoomAction =
-            shouldFindSentinelFootprints || shouldFindLandsatFootprints || shouldFetchOsm
-              ? (completed: boolean) => {
-                  if (completed) {
-                    performSearchAfterZoom();
-                  } else {
-                    toast({
-                      description:
-                        'El zoom fue cancelado, no se realizarán búsquedas adicionales.',
-                    });
-                  }
-                }
-              : undefined;
-
-          zoomToBoundingBox([wLon, sLat, eLon, nLat], afterZoomAction);
-        } else {
-          toast({ description: `Drax devolvió una ubicación inválida.` });
-        }
-      } else {
-        if (shouldFindSentinelFootprints || shouldFindLandsatFootprints || shouldFetchOsm) {
-          performSearchAfterZoom(); // handles non-zoom searches
-        }
-      }
-
-      if (action.urlToOpen) {
-        window.open(action.urlToOpen, '_blank', 'noopener,noreferrer');
-        toast({ description: `Abriendo Trello en una nueva pestaña...` });
-      }
-    },
-    [
-      discoveredGeoServerLayers,
-      layerManagerHook,
-      toast,
-      zoomToBoundingBox,
-      handleChangeBaseLayer,
-      osmDataHook,
-      initialGeoServerUrl,
-      panels,
-      togglePanelMinimize,
-    ]
   );
 
   const handleDeasAddLayer = useCallback(
@@ -1717,40 +1507,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               allLayers={layerManagerHook.layers}
             />
           )}
-
-        {isClientMounted && !initialMapState && panels.ai && !panels.ai.isMinimized && (
-          <AIPanel
-            panelRef={aiPanelRef}
-            isCollapsed={panels.ai.isCollapsed}
-            onToggleCollapse={() => togglePanelCollapse('ai')}
-            onClosePanel={() => togglePanelMinimize('ai')}
-            onMouseDownHeader={(e) => handlePanelMouseDown(e, 'ai')}
-            availableLayers={discoveredGeoServerLayers.map((l) => ({
-              name: l.name,
-              title: l.title,
-            }))}
-            activeLayers={layerManagerHook.layers.flatMap((item) => {
-              if ('layers' in item) {
-                return item.layers.map((l) => {
-                  const machineName = l.olLayer.get('gsLayerName') || l.name;
-                  return { name: machineName, title: l.name, type: l.type };
-                });
-              } else {
-                const machineName = item.olLayer.get('gsLayerName') || item.name;
-                return { name: machineName, title: item.name, type: item.type };
-              }
-            })}
-            onLayerAction={handleAiAction}
-            messages={chatMessages}
-            setMessages={setChatMessages}
-            style={{
-              top: `${panels.ai.position.y}px`,
-              left: `${panels.ai.position.x}px`,
-              zIndex: panels.ai.zIndex,
-            }}
-          />
-        )}
-
 
         {isClientMounted &&
           !initialMapState &&
