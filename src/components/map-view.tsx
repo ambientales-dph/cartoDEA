@@ -1,198 +1,326 @@
+
 "use client";
 
-import * as React from "react";
-import type {
-  Feature,
-  FeatureCollection,
-  Polygon as TurfPolygon,
-} from "@turf/turf";
-import {
-  Map,
-  useMap,
-  AdvancedMarker,
-  InfoWindow,
-} from "@vis.gl/react-google-maps";
-import { type LayerId } from "@/lib/map-data";
-import { Info } from "lucide-react";
+import React, { useEffect, useRef } from 'react';
+import 'ol/ol.css'; // Import OpenLayers CSS
+import { Map as OLMap, View } from 'ol';
+import TileLayer from 'ol/layer/Tile';
+import OSM from 'ol/source/OSM';
+import XYZ from 'ol/source/XYZ';
+import {defaults as defaultControls} from 'ol/control';
+import {defaults as defaultInteractions, DragPan} from 'ol/interaction';
+import { fromLonLat } from 'ol/proj';
+import type { Layer } from 'ol/layer';
+import type { BaseLayerSettings } from '@/lib/types';
+import type { MapBrowserEvent } from 'ol';
 
-type MapViewProps = {
-  pointsOfInterest: FeatureCollection;
-  parkAreas: FeatureCollection;
-  analysisResult: FeatureCollection<TurfPolygon> | null;
-  visibleLayers: Set<LayerId>;
-  onFeatureClick: (feature: Feature) => void;
-  onBoundsChanged: (bounds: string | null) => void;
+interface MapViewProps {
+  setMapInstanceAndElement: (map: OLMap, element: HTMLDivElement) => void;
+  onMapClick?: (event: any) => void; 
+  activeBaseLayerId?: string; 
+  baseLayerSettings: BaseLayerSettings;
+}
+
+export type Band = 'red' | 'green' | 'blue' | 'false-color-vegetation' | 'false-color-urban' | 'none';
+
+
+type BaseLayerDefinition = {
+  id: string;
+  name: string;
+  band?: Band;
+  parentLayerId?: string;
+  createLayer?: () => TileLayer<XYZ | OSM> | null;
+}
+
+export const BASE_LAYER_DEFINITIONS: readonly BaseLayerDefinition[] = [
+  {
+    id: 'none',
+    name: 'Sin capa base',
+    createLayer: () => null, // This option doesn't create a layer
+  },
+  {
+    id: 'osm-standard',
+    name: 'OpenStreetMap',
+    createLayer: () => new TileLayer({
+      source: new OSM(),
+      properties: { baseLayerId: 'osm-standard', isBaseLayer: true, name: 'OSMBaseLayer' },
+      zIndex: 0,
+    }),
+  },
+  {
+    id: 'carto-light',
+    name: 'OSM Gris (Carto)',
+    createLayer: () => new TileLayer({
+      source: new XYZ({ 
+        url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        attributions: 'Map tiles by <a href="https://carto.com/attributions">Carto</a>, under CC BY 3.0. Data by <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, under ODbL.',
+        maxZoom: 20,
+        crossOrigin: 'Anonymous'
+      }),
+      properties: { baseLayerId: 'carto-light', isBaseLayer: true, name: 'CartoGrayscaleBaseLayer' },
+      zIndex: 0,
+    }),
+  },
+  {
+    id: 'carto-labels',
+    name: 'OSM Etiquetas (Carto)',
+    createLayer: () => new TileLayer({
+      source: new XYZ({ 
+        url: 'https://{a-d}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
+        attributions: 'Map tiles by <a href="https://carto.com/attributions">Carto</a>, under CC BY 3.0. Data by <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, under ODbL.',
+        maxZoom: 20,
+        crossOrigin: 'Anonymous'
+      }),
+      properties: { baseLayerId: 'carto-labels', isBaseLayer: true, name: 'CartoLabelsBaseLayer' },
+      zIndex: 0,
+    }),
+  },
+  {
+    id: 'esri-satellite',
+    name: 'ESRI Satelital (Color Natural)',
+    createLayer: () => new TileLayer({
+      source: new XYZ({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attributions: 'Tiles © Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+        maxZoom: 19,
+        crossOrigin: 'Anonymous'
+      }),
+      properties: { baseLayerId: 'esri-satellite', isBaseLayer: true, name: 'ESRISatelliteBaseLayer' },
+      zIndex: 0,
+    }),
+  },
+  {
+    id: 'esri-false-color-vegetation',
+    name: 'Satelital Falso Color (Vegetación)',
+    band: 'false-color-vegetation',
+    parentLayerId: 'esri-satellite'
+  },
+  {
+    id: 'esri-false-color-urban',
+    name: 'Satelital Falso Color (Urbano)',
+    band: 'false-color-urban',
+    parentLayerId: 'esri-satellite'
+  },
+  {
+    id: 'esri-red',
+    name: 'ESRI - Banda Roja',
+    band: 'red',
+    parentLayerId: 'esri-satellite'
+  },
+  {
+    id: 'esri-green',
+    name: 'ESRI - Banda Verde',
+    band: 'green',
+    parentLayerId: 'esri-satellite'
+  },
+  {
+    id: 'esri-blue',
+    name: 'ESRI - Banda Azul',
+    band: 'blue',
+    parentLayerId: 'esri-satellite'
+  },
+] as const;
+
+
+const applyBaseLayerEffects = (
+  layer: Layer, 
+  settings: BaseLayerSettings,
+  band: Band
+) => {
+  layer.setOpacity(settings.opacity);
+
+  const oldPrerenderListener = layer.get('prerenderListener');
+  if (oldPrerenderListener) {
+    layer.removeEventListener('prerender', oldPrerenderListener);
+  }
+  const oldPostrenderListener = layer.get('postrenderListener');
+  if (oldPostrenderListener) {
+    layer.removeEventListener('postrender', oldPostrenderListener);
+  }
+  
+  const hasEffects = band !== 'none' || settings.brightness !== 100 || settings.contrast !== 100;
+
+  if (hasEffects) {
+    const prerenderListener = (event: any) => {
+      const context = event.context;
+      if (!context) return;
+      context.filter = `brightness(${settings.brightness}%) contrast(${settings.contrast}%)`;
+    };
+
+    const postrenderListener = (event: any) => {
+      const context = event.context;
+      if (!context) return;
+
+      if (band !== 'none') {
+        try {
+          const canvas = context.canvas;
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          
+          if (band === 'red' || band === 'green' || band === 'blue') {
+            for (let i = 0; i < data.length; i += 4) {
+              let grayValue = 0;
+              switch (band) {
+                case 'red': grayValue = data[i]; break;
+                case 'green': grayValue = data[i + 1]; break;
+                case 'blue': grayValue = data[i + 2]; break;
+              }
+              data[i] = grayValue;
+              data[i + 1] = grayValue;
+              data[i + 2] = grayValue;
+            }
+          } else if (band === 'false-color-vegetation') { // NIR(G)-R-B  -> R-G-B
+             for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                // const b = data[i + 2];
+                data[i] = g;     // Red channel gets green value (vegetation becomes red)
+                data[i + 1] = r; // Green channel gets red value
+                data[i + 2] = r; // Blue channel gets red value (suppress blue for vegetation)
+            }
+          } else if (band === 'false-color-urban') { // B-G-R -> R-G-B
+             for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                data[i] = b;     // Red channel gets blue (urban areas -> magenta/violet)
+                data[i + 1] = g; // Green stays green
+                data[i + 2] = r; // Blue gets red
+            }
+          }
+          
+          context.putImageData(imageData, 0, 0);
+        } catch (e) {
+          // Silence CORS errors
+        }
+      }
+      
+      context.filter = 'none';
+    };
+
+    layer.on('prerender', prerenderListener);
+    layer.on('postrender', postrenderListener);
+    layer.set('prerenderListener', prerenderListener);
+    layer.set('postrenderListener', postrenderListener);
+  }
+  
+  layer.getSource()?.refresh();
 };
 
-// Helper component to draw a polygon using the imperative Google Maps API
-function DrawnPolygon({
-  feature,
-  options,
-  onClick,
-  visible,
-}: {
-  feature: Feature<TurfPolygon>;
-  options: google.maps.PolygonOptions;
-  onClick: () => void;
-  visible: boolean;
-}) {
-  const map = useMap();
-  const [polygon, setPolygon] = React.useState<google.maps.Polygon | null>(
-    null
-  );
+const MapView: React.FC<MapViewProps> = ({ setMapInstanceAndElement, onMapClick, activeBaseLayerId, baseLayerSettings }) => {
+  const mapElementRef = useRef<HTMLDivElement>(null);
+  const olMapInstanceRef = useRef<OLMap | null>(null); 
+  const baseLayerRefs = useRef<Record<string, TileLayer<any>>>({});
 
-  React.useEffect(() => {
-    if (!map) return;
-    const poly = new google.maps.Polygon({
-      ...options,
-      paths: feature.geometry.coordinates[0].map((coords) => ({
-        lat: coords[1],
-        lng: coords[0],
-      })),
+  useEffect(() => {
+    if (!mapElementRef.current || olMapInstanceRef.current) { 
+      return;
+    }
+
+    const initialBaseLayers = BASE_LAYER_DEFINITIONS
+      .filter(def => def.createLayer)
+      .map(def => {
+        const layer = def.createLayer!();
+        if (layer) { // Check if the layer is not null
+          layer.setVisible(def.id === (activeBaseLayerId || BASE_LAYER_DEFINITIONS[0].id));
+          baseLayerRefs.current[def.id] = layer;
+          return layer;
+        }
+        return null;
+    }).filter((l): l is TileLayer<any> => l !== null);
+
+    const map = new OLMap({
+      target: mapElementRef.current,
+      layers: [...initialBaseLayers], 
+      view: new View({
+        center: fromLonLat([-60.0, -36.5], 'EPSG:3857'),
+        zoom: 7,
+        projection: 'EPSG:3857', 
+        constrainResolution: true, 
+      }),
+      interactions: defaultInteractions().extend([
+        new DragPan({
+          condition: (event: MapBrowserEvent<any>) => {
+            return event.originalEvent.button === 1;
+          },
+        }),
+      ]),
+      controls: defaultControls({
+        attributionOptions: {
+          collapsible: false,
+        },
+        zoom: true,
+        rotate: false, 
+      }),
     });
-    poly.setMap(map);
-
-    const clickListener = poly.addListener("click", onClick);
-
-    setPolygon(poly);
+    
+    olMapInstanceRef.current = map; 
+    setMapInstanceAndElement(map, mapElementRef.current);
 
     return () => {
-      google.maps.event.removeListener(clickListener);
-      poly.setMap(null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, feature]); // Options are static, so we don't need to include them
-
-  React.useEffect(() => {
-    if (!polygon) return;
-    polygon.setVisible(visible);
-  }, [polygon, visible]);
-
-  return null;
-}
-
-export function MapView({
-  pointsOfInterest,
-  parkAreas,
-  analysisResult,
-  visibleLayers,
-  onFeatureClick,
-  onBoundsChanged,
-}: MapViewProps) {
-  const map = useMap();
-  const [selectedMarker, setSelectedMarker] = React.useState<Feature | null>(
-    null
-  );
-
-  React.useEffect(() => {
-    if (!map) return;
-    const listener = map.addListener("bounds_changed", () => {
-      const bounds = map.getBounds();
-      onBoundsChanged(bounds ? bounds.toUrlValue() : null);
-    });
-    return () => google.maps.event.removeListener(listener);
-  }, [map, onBoundsChanged]);
-
-  React.useEffect(() => {
-    if (map && analysisResult?.features?.[0]) {
-      const bounds = new google.maps.LatLngBounds();
-      const feature = analysisResult.features[0];
-      if (feature.geometry) {
-        feature.geometry.coordinates[0].forEach((coord) => {
-          bounds.extend(new google.maps.LatLng(coord[1], coord[0]));
-        });
-        map.fitBounds(bounds);
+      if (olMapInstanceRef.current) {
+        olMapInstanceRef.current.setTarget(undefined); 
+        olMapInstanceRef.current = null;
       }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setMapInstanceAndElement]); 
+
+  useEffect(() => {
+    if (!olMapInstanceRef.current) return; 
+    const currentMap = olMapInstanceRef.current;
+
+    if (onMapClick) {
+      currentMap.on('singleclick', onMapClick);
     }
-  }, [analysisResult, map]);
+    return () => {
+      if (onMapClick) { 
+        currentMap.un('singleclick', onMapClick);
+      }
+    };
+  }, [onMapClick]); 
 
-  return (
-    <>
-      <Map
-        defaultCenter={{ lat: 40.7128, lng: -74.006 }}
-        defaultZoom={11}
-        mapId="a3a79d3b24aa19f"
-        gestureHandling={"greedy"}
-        disableDefaultUI={true}
-        style={{ width: "100%", height: "100%" }}
-      >
-        {visibleLayers.has("points-of-interest") &&
-          pointsOfInterest.features.map((feature) => (
-            <AdvancedMarker
-              key={feature.id}
-              position={{
-                lat: (feature.geometry as any).coordinates[1],
-                lng: (feature.geometry as any).coordinates[0],
-              }}
-              onClick={() => {
-                onFeatureClick(feature);
-                setSelectedMarker(feature);
-              }}
-            >
-              <div className="w-5 h-5 bg-primary rounded-full border-2 border-white shadow-md"></div>
-            </AdvancedMarker>
-          ))}
+  useEffect(() => {
+    if (!olMapInstanceRef.current || !activeBaseLayerId) return;
 
-        {parkAreas.features.map((feature) => {
-          if (feature.geometry.type !== "Polygon") return null;
-          return (
-            <DrawnPolygon
-              key={feature.id}
-              feature={feature as Feature<TurfPolygon>}
-              visible={visibleLayers.has("park-areas")}
-              onClick={() => onFeatureClick(feature)}
-              options={{
-                fillColor: "green",
-                strokeColor: "darkgreen",
-                strokeWeight: 1,
-                fillOpacity: 0.3,
-                clickable: true,
-              }}
-            />
-          );
-        })}
+    if (activeBaseLayerId === 'none') {
+      // If "no base layer" is selected, hide all base layers
+      Object.values(baseLayerRefs.current).forEach(layer => {
+        layer.setVisible(false);
+      });
+      return;
+    }
 
-        {analysisResult &&
-          analysisResult.features.map((feature, i) => {
-            if (feature.geometry.type !== "Polygon") return null;
-            return (
-              <DrawnPolygon
-                key={feature.id || i}
-                feature={feature as Feature<TurfPolygon>}
-                visible={visibleLayers.has("analysis-result")}
-                onClick={() => onFeatureClick(feature)}
-                options={{
-                  fillColor: "#228B22",
-                  strokeColor: "#006400",
-                  strokeWeight: 2,
-                  fillOpacity: 0.5,
-                  clickable: true,
-                }}
-              />
-            );
-          })}
-      </Map>
+    const selectedDef = BASE_LAYER_DEFINITIONS.find(d => d.id === activeBaseLayerId);
+    if (!selectedDef) return;
 
-      {selectedMarker && (
-        <InfoWindow
-          position={{
-            lat: (selectedMarker.geometry as any).coordinates[1],
-            lng: (selectedMarker.geometry as any).coordinates[0],
-          }}
-          onCloseClick={() => setSelectedMarker(null)}
-          pixelOffset={new google.maps.Size(0, -20)}
-        >
-          <div className="p-2">
-            <h3 className="font-bold flex items-center gap-2">
-              <Info className="w-4 h-4" />
-              {selectedMarker.properties?.name}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {selectedMarker.properties?.type}
-            </p>
-          </div>
-        </InfoWindow>
-      )}
-    </>
-  );
-}
+    const layerIdToShow = selectedDef.parentLayerId || selectedDef.id;
+    const bandToShow = selectedDef.band || 'none';
+
+    Object.values(baseLayerRefs.current).forEach(layer => {
+      const layerId = layer.get('baseLayerId');
+      const isVisible = layerId === layerIdToShow;
+      layer.setVisible(isVisible);
+
+      // --- NEW LOGIC ---
+      // If the layer is the label layer, set a high z-index.
+      // Otherwise, set a low z-index (or default) for other base layers.
+      if (layerId === 'carto-labels') {
+        layer.setZIndex(isVisible ? 500 : 0);
+      } else {
+        layer.setZIndex(0);
+      }
+      
+      if (isVisible) {
+        applyBaseLayerEffects(layer, baseLayerSettings, bandToShow);
+      } else {
+        applyBaseLayerEffects(layer, { opacity: 1, brightness: 100, contrast: 100 }, 'none');
+      }
+    });
+
+  }, [activeBaseLayerId, baseLayerSettings]);
+
+  return <div ref={mapElementRef} className="w-full h-full bg-gray-200" />;
+};
+
+export default MapView;

@@ -1,10 +1,24 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
+import { Encode_Sans, Encode_Sans_Condensed } from 'next/font/google';
 import './globals.css';
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from '@/components/ui/toaster';
+import { FirebaseClientProvider } from '@/firebase/client-provider';
+
+const encodeSans = Encode_Sans({
+  subsets: ['latin'],
+  variable: '--font-encode-sans',
+});
+
+const encodeSansCondensed = Encode_Sans_Condensed({
+  subsets: ['latin'],
+  weight: '500',
+  variable: '--font-encode-sans-condensed',
+});
+
 
 export const metadata: Metadata = {
-  title: 'CartoDEA v4.1',
-  description: 'AI-Powered Geospatial Analysis Platform',
+  title: 'Map Explorer',
+  description: 'Explore the world with an interactive map.',
 };
 
 export default function RootLayout({
@@ -14,14 +28,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
-      <body className="font-body antialiased">
-        {children}
-        <Toaster />
+      <body
+        className={`${encodeSans.variable} ${encodeSansCondensed.variable} antialiased`}
+      >
+        <FirebaseClientProvider>
+            {children}
+            <Toaster />
+        </FirebaseClientProvider>
       </body>
     </html>
   );

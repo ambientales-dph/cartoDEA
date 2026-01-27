@@ -1,0 +1,96 @@
+
+{
+  "entities": {
+    "SharedMap": {
+      "title": "Shared Map State",
+      "description": "Represents the serializable state of a map view for sharing.",
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "description": "The user-defined subject or title of the shared map."
+        },
+        "layers": {
+          "type": "array",
+          "description": "List of active layers.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "description": "Layer type (e.g., 'wfs', 'wms', 'gee', 'local')." },
+              "name": { "type": "string", "description": "Display name of the layer." },
+              "url": { "type": "string", "description": "The base URL of the OGC server." },
+              "layerName": { "type": "string", "description": "The machine-readable layer name (e.g., 'workspace:layer')." },
+              "opacity": { "type": "number", "description": "Layer opacity from 0 to 1." },
+              "visible": { "type": "boolean", "description": "Layer visibility." },
+              "wmsStyleEnabled": { "type": "boolean", "description": "Whether the WMS style is active." },
+              "styleName": { "type": "string", "description": "The original WMS style name." },
+              "geeParams": {
+                "type": "object",
+                "description": "Parameters for GEE layers.",
+                 "properties": {
+                    "bandCombination": { "type": "string" },
+                    "tileUrl": { "type": "string" }
+                 }
+              }
+            },
+            "required": ["type", "name"]
+          }
+        },
+        "view": {
+          "type": "object",
+          "description": "Map view state.",
+          "properties": {
+            "center": { "type": "array", "items": { "type": "number" }, "description": "Map center in [lon, lat]." },
+            "zoom": { "type": "number", "description": "Map zoom level." }
+          },
+          "required": ["center", "zoom"]
+        },
+        "baseLayerId": {
+          "type": "string",
+          "description": "The ID of the active base layer."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of when the map was shared. This will be a server timestamp object."
+        }
+      },
+      "required": ["subject", "layers", "view", "baseLayerId", "createdAt"]
+    },
+    "Agent": {
+      "title": "Agent Profile",
+      "description": "Represents a player in the Cartodea deployment game.",
+      "type": "object",
+      "properties": {
+        "nickname": { "type": "string", "description": "The agent's display name." },
+        "current_cd": { "type": "number", "description": "Deployment Capacity available." },
+        "deployment_center": { "type": "object", "description": "GeoPoint of the agent's base." },
+        "is_deploying": { "type": "boolean", "description": "Flag if the agent is in transit." },
+        "upgrades": { "type": "object", "description": "Object storing agent's upgrades." }
+      },
+      "required": ["nickname", "current_cd", "deployment_center", "is_deploying"]
+    },
+    "Incident": {
+      "title": "Game Incident",
+      "description": "Represents an active incident in the game.",
+      "type": "object",
+      "properties": {
+        "location": { "type": "object", "description": "GeoPoint of the incident." },
+        "type": { "type": "string", "enum": ["Inundación", "Fuego Urbano", "Fuego Rural"], "description": "The type of incident." },
+        "urgency_level": { "type": "string", "enum": ["Bajo", "Medio", "Crítico"], "description": "Urgency of the incident." },
+        "operational_resilience": { "type": "number", "description": "Resource that depletes over time." },
+        "is_resolved": { "type": "boolean", "description": "Flag if the incident is resolved." },
+        "createdAt": { "type": "string", "description": "Timestamp of incident creation." }
+      },
+      "required": ["location", "type", "urgency_level", "operational_resilience", "is_resolved", "createdAt"]
+    }
+  },
+  "auth": {
+    "providers": ["google.com"]
+  },
+  "firestore": {
+    "rules": {
+      "version": 2,
+      "rules": "rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    \n    // Reglas para Agentes del Juego\n    match /agents/{userId} {\n      // Cualquiera puede leer los perfiles de los agentes para verlos en el mapa\n      allow read;\n      // Solo el dueño del perfil puede crearlo, actualizarlo o borrarlo\n      allow write: if request.auth.uid == userId;\n    }\n    \n    // Reglas para Incidentes del Juego\n    match /incidents/{incidentId} {\n      // Cualquiera puede leer los incidentes para verlos\n      allow read;\n      // Por ahora, nadie del lado del cliente puede modificar incidentes directamente.\n      // Esto se haría desde una Función de Cloud o un backend seguro.\n      allow write: if false;\n    }\n\n    // Reglas para Mapas Compartidos\n    match /sharedMaps/{mapId} {\n        // Cualquiera con el enlace puede leer un mapa compartido\n        allow read;\n        // Cualquiera puede crear un mapa compartido\n        allow create;\n        // Nadie puede actualizar o borrar un mapa compartido desde el cliente\n        allow update, delete: if false;\n    }\n    \n    // Regla de denegación por defecto para cualquier otra colección\n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}"
+    }
+  }
+}

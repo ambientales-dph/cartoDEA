@@ -1,0 +1,84 @@
+
+'use client';
+
+import { collection, addDoc, getDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
+import type { MapState } from "@/lib/types";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+
+const SHARED_MAPS_COLLECTION = 'sharedMaps';
+
+/**
+ * Saves the current map state to Firestore and returns the new document's ID.
+ * @param db The Firestore instance.
+ * @param mapState The map state object to save, including the subject.
+ * @returns A promise that resolves to the new document ID, or rejects on error.
+ */
+export async function saveMapState(db: Firestore, mapState: MapState): Promise<string> {
+    if (!db) {
+        throw new Error("Firestore instance not provided to saveMapState.");
+    }
+
+    const dataToSend = {
+        ...mapState,
+        createdAt: serverTimestamp(),
+    };
+
+    try {
+        const docRef = await addDoc(collection(db, SHARED_MAPS_COLLECTION), dataToSend);
+        return docRef.id;
+    } catch (serverError: any) {
+        console.error("Error writing document to Firestore:", serverError);
+        // Here you can still create and throw a more detailed error if you wish,
+        // or just re-throw the original error.
+        throw new Error(`Could not save map state: ${serverError.message}`);
+    }
+}
+
+
+/**
+ * Retrieves a map state from Firestore by its ID.
+ * @param db The Firestore instance.
+ * @param mapId The ID of the document to retrieve.
+ * @returns A promise that resolves to the MapState object or null if not found.
+ */
+export async function getMapState(db: Firestore, mapId: string): Promise<MapState | null> {
+    if (!db) {
+        console.error("Firestore instance not available for getMapState.");
+        return null;
+    }
+    try {
+        const docRef = doc(db, SHARED_MAPS_COLLECTION, mapId);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            // The data is already in the correct format, just cast it.
+            return docSnap.data() as MapState;
+        } else {
+            console.log("No such map state document!");
+            return null;
+        }
+    } catch (error) {
+        console.error("Error getting map state from Firestore:", error);
+        throw new Error("Could not retrieve map state.");
+    }
+}
+
+/**
+ * Reads a document for debugging purposes.
+ * @param db The Firestore instance.
+ */
+export async function debugReadDocument(db: Firestore) {
+  if (!db) {
+    console.error("Firestore instance not available for debugReadDocument.");
+    return;
+  }
+  try {
+    const docRef = doc(db, 'sharedMaps', 'debug-test');
+    await getDoc(docRef);
+  } catch (error) {
+    // This is expected to fail with a permission error if rules are working.
+    // The rich error will be thrown by the FirestorePermissionError handler.
+    console.log("Debug read initiated. If a permission error is expected, this is normal.");
+  }
+}

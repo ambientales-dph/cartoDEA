@@ -1,4 +1,4 @@
-import { config } from 'dotenv';
-config();
-
-import '@/ai/flows/suggest-relevant-features.ts';
+// Flows will be imported for their side effects in this file.
+import './flows/find-layer-flow';
+import './flows/gee-flow';
+import './flows/game-flow';
