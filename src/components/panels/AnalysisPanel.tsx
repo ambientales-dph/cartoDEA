@@ -304,23 +304,23 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [activeAccordionItem, setActiveAccordionItem] = useState<string | undefined>(undefined);
 
     // State for Clip tool
-    const [clipInputLayerId, setClipInputLayerId] = setClipInputLayerId('');
-    const [clipMaskLayerId, setClipMaskLayerId] = setClipMaskLayerId('');
+    const [clipInputLayerId, setClipInputLayerId] = useState('');
+    const [clipMaskLayerId, setClipMaskLayerId] = useState('');
     const [clipOutputName, setClipOutputName] = useState('');
 
     // State for Difference (Erase) tool
-    const [eraseInputLayerId, setEraseInputLayerId] = setEraseInputLayerId('');
-    const [eraseMaskLayerId, setEraseMaskLayerId] = setEraseMaskLayerId('');
+    const [eraseInputLayerId, setEraseInputLayerId] = useState('');
+    const [eraseMaskLayerId, setEraseMaskLayerId] = useState('');
     const [eraseOutputName, setEraseOutputName] = useState('');
 
     // State for Buffer tool
-    const [bufferInputLayerId, setBufferInputLayerId] = setBufferInputLayerId('');
+    const [bufferInputLayerId, setBufferInputLayerId] = useState('');
     const [bufferDistance, setBufferDistance] = useState<number>(100);
     const [bufferUnits, setBufferUnits] = useState<'meters' | 'kilometers' | 'miles'>('meters');
     const [bufferOutputName, setBufferOutputName] = useState('');
 
     // State for Hull tools
-    const [hullInputLayerId, setHullInputLayerId] = setHullInputLayerId('');
+    const [hullInputLayerId, setHullInputLayerId] = useState('');
     const [hullOutputName, setHullOutputName] = useState('');
     const [concavity, setConcavity] = useState<number>(2);
     const [isCalculatingConcavity, setIsCalculatingConcavity] = useState(false);
@@ -331,7 +331,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [unionOutputName, setUnionOutputName] = useState('');
 
     // State for Dissolve tool
-    const [dissolveInputLayerId, setDissolveInputLayerId] = setDissolveInputLayerId('');
+    const [dissolveInputLayerId, setDissolveInputLayerId] = useState('');
     const [dissolveOutputName, setDissolveOutputName] = useState('');
 
     // State for Population Projection
@@ -341,7 +341,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [projectionResult, setProjectionResult] = useState<{ projectedPopulation: number; averageAnnualRate: number } | null>(null);
 
     // State for Cross-sections tool
-    const [crossSectionInputLayerId, setCrossSectionInputLayerId] = setCrossSectionInputLayerId('');
+    const [crossSectionInputLayerId, setCrossSectionInputLayerId] = useState('');
     const [crossSectionOutputName, setCrossSectionOutputName] = useState<string>('');
     const [crossSectionDistance, setCrossSectionDistance] = useState<number>(100);
     const [crossSectionLength, setCrossSectionLength] = useState<number>(50);
@@ -349,7 +349,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [isGeneratingCrossSections, setIsGeneratingCrossSections] = useState(false);
 
     // State for Bezier Smoothing
-    const [smoothInputLayerId, setSmoothInputLayerId] = setSmoothInputLayerId('');
+    const [smoothInputLayerId, setSmoothInputLayerId] = useState('');
     const [smoothOutputName, setSmoothOutputName] = useState<string>('');
     const [smoothness, setSmoothness] = useState<number>(5000);
 
@@ -364,8 +364,8 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [yAxisDomainRight, setYAxisDomainRight] = useState<{ min: number | 'auto'; max: number | 'auto' }>({ min: 'auto', max: 'auto' });
     const [jenksClasses, setJenksClasses] = useState<number>(3);
     const [correlationResult, setCorrelationResult] = useState<CorrelationResult | null>(null);
-    const [corrAxisX, setCorrAxisX] = setCorrAxisX('');
-    const [corrAxisY, setCorrAxisY] = setCorrAxisY('');
+    const [corrAxisX, setCorrAxisX] = useState('');
+    const [corrAxisY, setCorrAxisY] = useState('');
 
     // State for Trajectory Analysis
     const [clusterInputLayerId, setClusterInputLayerId] = useState('');
@@ -891,7 +891,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     <Label className="text-xs">Max</Label>
                     <div className="flex items-center gap-1">
                         <Button {...maxDecHandlers} variant="ghost" size="icon" className="h-6 w-6"><Minus className="h-3 w-3" /></Button>
-                        <Input type="text" value={domain.max} onChange={(e) => handleYAxisDomainChange(axis, 'max', e.target.value)} className="h-7 w-12 text-xs bg-black/20 text-center" placeholder="auto" />
+                        <Input type="text" value={domain.max} onChange={(e) => handleYAxisDomainChange(axis, 'min', e.target.value)} className="h-7 w-12 text-xs bg-black/20 text-center" placeholder="auto" />
                         <Button {...maxIncHandlers} variant="ghost" size="icon" className="h-6 w-6"><Plus className="h-3 w-3" /></Button>
                     </div>
                 </div>
@@ -1882,7 +1882,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         // Clean up previous average vector if it exists
         if (averageVectorLayerId) {
             const oldLayer = allLayers.find(l => l.id === averageVectorLayerId);
-            if (oldLayer) onAddLayer(oldLayer, false); // This is a trick to remove it from the map
+            if (oldLayer) onAddLayer(oldLayer as MapLayer, false); // This is a trick to remove it from the map
         }
     
         if (useClustering) {
@@ -2936,7 +2936,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                     <Select value={trajectoryLayer1Id} onValueChange={setTrajectoryLayer1Id}>
                                         <SelectTrigger id="traj-layer1" className="h-8 text-xs bg-black/20"><SelectValue placeholder="Seleccionar capa de centroides..." /></SelectTrigger>
                                         <SelectContent className="bg-gray-700 text-white border-gray-600">
-                                            {pointLayers.map(l => l.name.toLowerCase().startsWith('centroides')).map(l => <SelectItem key={l.id} value={l.id} className="text-xs">{l.name}</SelectItem>)}
+                                            {pointLayers.map(l => l.name.toLowerCase().startsWith('centroides') ? <SelectItem key={l.id} value={l.id} className="text-xs">{l.name}</SelectItem> : null)}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -2945,7 +2945,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                     <Select value={trajectoryLayer2Id} onValueChange={setTrajectoryLayer2Id}>
                                         <SelectTrigger id="traj-layer2" className="h-8 text-xs bg-black/20"><SelectValue placeholder="Seleccionar capa de centroides..." /></SelectTrigger>
                                         <SelectContent className="bg-gray-700 text-white border-gray-600">
-                                            {pointLayers.map(l => l.name.toLowerCase().startsWith('centroides')).map(l => <SelectItem key={l.id} value={l.id} className="text-xs">{l.name}</SelectItem>)}
+                                            {pointLayers.map(l => l.name.toLowerCase().startsWith('centroides') ? <SelectItem key={l.id} value={l.id} className="text-xs">{l.name}</SelectItem> : null)}
                                         </SelectContent>
                                     </Select>
                                 </div>
