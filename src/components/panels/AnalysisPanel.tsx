@@ -304,23 +304,23 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [activeAccordionItem, setActiveAccordionItem] = useState<string | undefined>(undefined);
 
     // State for Clip tool
-    const [clipInputLayerId, setClipInputLayerId] = useState<string>('');
-    const [clipMaskLayerId, setClipMaskLayerId] = useState<string>('');
+    const [clipInputLayerId, setClipInputLayerId] = setClipInputLayerId('');
+    const [clipMaskLayerId, setClipMaskLayerId] = setClipMaskLayerId('');
     const [clipOutputName, setClipOutputName] = useState('');
 
     // State for Difference (Erase) tool
-    const [eraseInputLayerId, setEraseInputLayerId] = useState<string>('');
-    const [eraseMaskLayerId, setEraseMaskLayerId] = useState<string>('');
+    const [eraseInputLayerId, setEraseInputLayerId] = setEraseInputLayerId('');
+    const [eraseMaskLayerId, setEraseMaskLayerId] = setEraseMaskLayerId('');
     const [eraseOutputName, setEraseOutputName] = useState('');
 
     // State for Buffer tool
-    const [bufferInputLayerId, setBufferInputLayerId] = useState<string>('');
+    const [bufferInputLayerId, setBufferInputLayerId] = setBufferInputLayerId('');
     const [bufferDistance, setBufferDistance] = useState<number>(100);
     const [bufferUnits, setBufferUnits] = useState<'meters' | 'kilometers' | 'miles'>('meters');
     const [bufferOutputName, setBufferOutputName] = useState('');
 
     // State for Hull tools
-    const [hullInputLayerId, setHullInputLayerId] = useState<string>('');
+    const [hullInputLayerId, setHullInputLayerId] = setHullInputLayerId('');
     const [hullOutputName, setHullOutputName] = useState('');
     const [concavity, setConcavity] = useState<number>(2);
     const [isCalculatingConcavity, setIsCalculatingConcavity] = useState(false);
@@ -331,16 +331,17 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [unionOutputName, setUnionOutputName] = useState('');
 
     // State for Dissolve tool
-    const [dissolveInputLayerId, setDissolveInputLayerId] = useState<string>('');
+    const [dissolveInputLayerId, setDissolveInputLayerId] = setDissolveInputLayerId('');
     const [dissolveOutputName, setDissolveOutputName] = useState('');
 
     // State for Population Projection
     const [selectedPartido, setSelectedPartido] = useState<string>('');
     const [partialPopulation, setPartialPopulation] = useState<string>('');
+    const [baseYear, setBaseYear] = useState<string>('2022');
     const [projectionResult, setProjectionResult] = useState<{ projectedPopulation: number; averageAnnualRate: number } | null>(null);
 
     // State for Cross-sections tool
-    const [crossSectionInputLayerId, setCrossSectionInputLayerId] = useState<string>('');
+    const [crossSectionInputLayerId, setCrossSectionInputLayerId] = setCrossSectionInputLayerId('');
     const [crossSectionOutputName, setCrossSectionOutputName] = useState<string>('');
     const [crossSectionDistance, setCrossSectionDistance] = useState<number>(100);
     const [crossSectionLength, setCrossSectionLength] = useState<number>(50);
@@ -348,7 +349,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [isGeneratingCrossSections, setIsGeneratingCrossSections] = useState(false);
 
     // State for Bezier Smoothing
-    const [smoothInputLayerId, setSmoothInputLayerId] = useState<string>('');
+    const [smoothInputLayerId, setSmoothInputLayerId] = setSmoothInputLayerId('');
     const [smoothOutputName, setSmoothOutputName] = useState<string>('');
     const [smoothness, setSmoothness] = useState<number>(5000);
 
@@ -363,8 +364,8 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [yAxisDomainRight, setYAxisDomainRight] = useState<{ min: number | 'auto'; max: number | 'auto' }>({ min: 'auto', max: 'auto' });
     const [jenksClasses, setJenksClasses] = useState<number>(3);
     const [correlationResult, setCorrelationResult] = useState<CorrelationResult | null>(null);
-    const [corrAxisX, setCorrAxisX] = useState<string>('');
-    const [corrAxisY, setCorrAxisY] = useState<string>('');
+    const [corrAxisX, setCorrAxisX] = setCorrAxisX('');
+    const [corrAxisY, setCorrAxisY] = setCorrAxisY('');
 
     // State for Trajectory Analysis
     const [clusterInputLayerId, setClusterInputLayerId] = useState('');
@@ -1601,6 +1602,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const handleRunProjection = () => {
         const partidoData = POPULATION_DATA.find(p => p.partido === selectedPartido);
         const populationToProject = parseFloat(partialPopulation);
+        const yearBase = parseInt(baseYear);
 
         if (!partidoData) {
             toast({ title: "Entrada Inválida", description: "Por favor, seleccione un partido.", variant: "destructive" });
@@ -1610,10 +1612,14 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             toast({ title: "Entrada Inválida", description: "Por favor, ingrese un número de población parcial válido.", variant: "destructive" });
             return;
         }
+        if (isNaN(yearBase) || yearBase < 1900 || yearBase > new Date().getFullYear() + 50) {
+            toast({ title: "Año Inválido", description: "Por favor, ingrese un año base válido.", variant: "destructive" });
+            return;
+        }
 
         try {
             const currentYear = new Date().getFullYear();
-            const result = projectPopulationGeometric({ partidoData, initialPopulation: populationToProject, targetYear: currentYear });
+            const result = projectPopulationGeometric({ partidoData, initialPopulation: populationToProject, baseYear: yearBase, targetYear: currentYear });
             setProjectionResult(result);
             toast({ description: "Cálculo de proyección completado." });
         } catch (error: any) {
@@ -2873,7 +2879,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                         <div className="space-y-1">
                             <Label className="text-xs font-semibold">Proyección de Población (Bs. As.)</Label>
                             <div className="space-y-2 p-2 border border-white/10 rounded-md">
-                                <p className="text-xs text-gray-400">Proyecta una población parcial (ej. radios censales) al año actual usando la tasa de crecimiento del partido seleccionado.</p>
+                                <p className="text-xs text-gray-400">Proyecta una población personalizada al año actual usando la tasa de crecimiento del partido seleccionado.</p>
                                 <div>
                                     <Label htmlFor="partido-select" className="text-xs">Partido de Referencia</Label>
                                     <Select value={selectedPartido} onValueChange={setSelectedPartido}>
@@ -2883,11 +2889,17 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div>
-                                    <Label htmlFor="partial-population" className="text-xs">Población Parcial a Proyectar</Label>
-                                    <Input id="partial-population" type="number" value={partialPopulation} onChange={(e) => setPartialPopulation(e.target.value)} placeholder="Ej: 1500" className="h-8 text-xs bg-black/20" />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="partial-population" className="text-xs">Población Base</Label>
+                                        <Input id="partial-population" type="number" value={partialPopulation} onChange={(e) => setPartialPopulation(e.target.value)} placeholder="Ej: 1500" className="h-8 text-xs bg-black/20" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="base-year" className="text-xs">Año del Valor</Label>
+                                        <Input id="base-year" type="number" value={baseYear} onChange={(e) => setBaseYear(e.target.value)} placeholder="Ej: 2010" className="h-8 text-xs bg-black/20" />
+                                    </div>
                                 </div>
-                                <Button onClick={handleRunProjection} size="sm" className="w-full h-8 text-xs" disabled={!selectedPartido || !partialPopulation}>
+                                <Button onClick={handleRunProjection} size="sm" className="w-full h-8 text-xs" disabled={!selectedPartido || !partialPopulation || !baseYear}>
                                     <TrendingUp className="mr-2 h-3.5 w-3.5" />
                                     Calcular Proyección
                                 </Button>

@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import type { Feature as TurfFeature, Polygon as TurfPolygon, MultiPolygon as TurfMultiPolygon, FeatureCollection as TurfFeatureCollection, Geometry as TurfGeometry, Point as TurfPoint, LineString as TurfLineString } from 'geojson';
@@ -341,7 +340,7 @@ export async function calculateSpatialStats({
 }
 
 
-export function projectPopulationGeometric({ partidoData, initialPopulation, targetYear }: { partidoData: typeof POPULATION_DATA[0], initialPopulation: number, targetYear: number }): { projectedPopulation: number, averageAnnualRate: number } {
+export function projectPopulationGeometric({ partidoData, initialPopulation, baseYear, targetYear }: { partidoData: typeof POPULATION_DATA[0], initialPopulation: number, baseYear: number, targetYear: number }): { projectedPopulation: number, averageAnnualRate: number } {
     
     let P1, P2, T1, T2;
 
@@ -359,7 +358,7 @@ export function projectPopulationGeometric({ partidoData, initialPopulation, tar
         if (!partidoData.censo_2001 || !partidoData.censo_2022) {
              throw new Error("Datos insuficientes para la proyección (se requieren 2001 y 2022).");
         }
-        P1 = partidoData.censo_2001;
+        P1 = partidoData.censo_2001!;
         P2 = partidoData.censo_2022;
         T1 = 2001;
         T2 = 2022;
@@ -372,8 +371,8 @@ export function projectPopulationGeometric({ partidoData, initialPopulation, tar
     
     const r = Math.pow(P2 / P1, 1 / timeDiff) - 1;
     
-    // Project from the latest census data (2022) using the partial population
-    const n = targetYear - 2022;
+    // Project from the user-defined base year to the target year
+    const n = targetYear - baseYear;
     const projectedPopulation = initialPopulation * Math.pow(1 + r, n);
     
     return { projectedPopulation, averageAnnualRate: r };
