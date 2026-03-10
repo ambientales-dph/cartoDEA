@@ -212,13 +212,10 @@ const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
   const isLine = layerType.includes('LineString');
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
-        onCloseAutoFocus={(e) => {
-            e.preventDefault();
-            document.body.style.pointerEvents = 'auto';
-        }}
+        onCloseAutoFocus={(e) => e.preventDefault()}
         className="bg-gray-800 text-white border-gray-700 sm:max-w-md p-4 z-[10000]"
       >
         <DialogHeader>

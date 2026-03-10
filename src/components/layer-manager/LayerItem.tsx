@@ -117,14 +117,12 @@ const LayerItem: React.FC<LayerItemProps> = ({
   const [isGraduatedEditorOpen, setIsGraduatedEditorOpen] = useState(false);
   const [isCategorizedEditorOpen, setIsCategorizedEditorOpen] = useState(false);
 
-  // --- CRITICAL FIX: Global cleanup effect ---
+  // Global cleanup to ensure body interaction is restored
   useEffect(() => {
-    // If no dialog is open, ensure body pointer events are enabled.
-    // This is a "brute force" fix for the Radix UI focus/lock issue when nesting.
     if (!isStyleEditorOpen && !isLabelEditorOpen && !isGraduatedEditorOpen && !isCategorizedEditorOpen && !isRenameDialogOpen) {
       const timer = setTimeout(() => {
         document.body.style.pointerEvents = 'auto';
-      }, 100);
+      }, 50);
       return () => clearTimeout(timer);
     }
   }, [isStyleEditorOpen, isLabelEditorOpen, isGraduatedEditorOpen, isCategorizedEditorOpen, isRenameDialogOpen]);
@@ -241,7 +239,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                 )}
 
                 {!props.isSharedView && (
-                  <DropdownMenu>
+                  <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-white/70 hover:bg-white/10 mr-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
                             <Settings2 className="h-4 w-4" />
@@ -258,7 +256,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                         <DropdownMenuItem onSelect={() => props.onZoomToExtent(layer.id)} className="text-xs">
                           <ZoomIn className="mr-2 h-3.5 w-3.5" /> Ir a la extensión
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsRenameDialogOpen(true); }} className="text-xs">
+                        <DropdownMenuItem onSelect={() => setIsRenameDialogOpen(true)} className="text-xs">
                           <Edit className="mr-2 h-3.5 w-3.5" /> Renombrar Capa
                         </DropdownMenuItem>
                         
@@ -271,9 +269,9 @@ const LayerItem: React.FC<LayerItemProps> = ({
                         <DropdownMenuSub>
                             <DropdownMenuSubTrigger className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simbología</DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
-                              {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsStyleEditorOpen(true); }} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</DropdownMenuItem>}
-                              {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsCategorizedEditorOpen(true); }} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</DropdownMenuItem>}
-                              {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGraduatedEditorOpen(true); }} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</DropdownMenuItem>}
+                              {isVectorLayer && <DropdownMenuItem onSelect={() => setIsStyleEditorOpen(true)} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</DropdownMenuItem>}
+                              {isVectorLayer && <DropdownMenuItem onSelect={() => setIsCategorizedEditorOpen(true)} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</DropdownMenuItem>}
+                              {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <DropdownMenuItem onSelect={() => setIsGraduatedEditorOpen(true)} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</DropdownMenuItem>}
                               {layer.type === 'wfs' && (
                                 <>
                                   <DropdownMenuSeparator className="bg-gray-500/50 my-1" />
@@ -283,7 +281,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                             </DropdownMenuSubContent>
                         </DropdownMenuSub>
 
-                        {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsLabelEditorOpen(true); }} className="text-xs"><Tags className="mr-2 h-3.5 w-3.5" />Etiquetar</DropdownMenuItem>}
+                        {isVectorLayer && <DropdownMenuItem onSelect={() => setIsLabelEditorOpen(true)} className="text-xs"><Tags className="mr-2 h-3.5 w-3.5" />Etiquetar</DropdownMenuItem>}
                         {isVectorLayer && <DropdownMenuItem onSelect={() => props.onShowLayerTable(layer.id)} className="text-xs"><Table2 className="mr-2 h-3.5 w-3.5" />Ver tabla de atributos</DropdownMenuItem>}
                         {isVectorLayer && <DropdownMenuItem onSelect={() => props.onShowStatistics(layer.id)} className="text-xs"><BarChartHorizontal className="mr-2 h-3.5 w-3.5" />Estadísticas</DropdownMenuItem>}
                         
