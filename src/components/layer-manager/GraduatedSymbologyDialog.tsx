@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -370,7 +369,7 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4">
+      <DialogContent onOpenAutoFocus={(e) => e.preventDefault()} className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4">
         <DialogHeader>
           <DialogTitle className="text-base">Simbología Graduada: {layer.name}</DialogTitle>
         </DialogHeader>
@@ -544,5 +543,3 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
 };
 
 export default GraduatedSymbologyDialog;
-
-    

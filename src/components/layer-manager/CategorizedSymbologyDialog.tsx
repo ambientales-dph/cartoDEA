@@ -236,7 +236,7 @@ const CategorizedSymbologyDialog: React.FC<CategorizedSymbologyDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4">
+      <DialogContent onOpenAutoFocus={(e) => e.preventDefault()} className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4">
         <DialogHeader><DialogTitle className="text-base">Simbología por Categorías: {layer.name}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-1 gap-3 py-1">
           <div className="p-2 border border-white/10 rounded-md space-y-2.5">

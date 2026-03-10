@@ -183,7 +183,7 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-gray-800 text-white border-gray-700 sm:max-w-[550px] p-4">
+      <DialogContent onOpenAutoFocus={(e) => e.preventDefault()} className="bg-gray-800 text-white border-gray-700 sm:max-w-[550px] p-4">
         <DialogHeader>
           <DialogTitle>Configurar Etiquetas para "{layer.name}"</DialogTitle>
         </DialogHeader>

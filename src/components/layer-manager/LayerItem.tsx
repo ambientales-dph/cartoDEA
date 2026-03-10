@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -120,7 +119,6 @@ const LayerItem: React.FC<LayerItemProps> = ({
   const [isCategorizedEditorOpen, setIsCategorizedEditorOpen] = useState(false);
 
   useEffect(() => {
-    // Reset editing name when dialog opens
     if (isRenameDialogOpen) {
       setEditingName(layer.name);
     }
@@ -134,27 +132,37 @@ const LayerItem: React.FC<LayerItemProps> = ({
   };
 
   const handleStyleChange = (styleOptions: StyleOptions) => {
-    props.onChangeLayerStyle(layer.id, styleOptions);
+    // Cerramos el diálogo primero para permitir que Radix limpie el overlay correctamente
     setIsStyleEditorOpen(false);
+    // Ejecutamos la actualización de la capa con un micro-delay
+    setTimeout(() => {
+        props.onChangeLayerStyle(layer.id, styleOptions);
+    }, 10);
   };
   
   const handleLabelChange = (labelOptions: LabelOptions) => {
-    props.onChangeLayerLabels(layer.id, labelOptions);
     setIsLabelEditorOpen(false);
+    setTimeout(() => {
+        props.onChangeLayerLabels(layer.id, labelOptions);
+    }, 10);
   };
 
   const handleGraduatedSymbologyApply = (symbology: GraduatedSymbology) => {
-    if (layer.type === 'geotiff' || layer.type === 'gee') {
-        props.onApplyGeoTiffStyle(layer.id, symbology as GeoTiffStyle);
-    } else {
-        props.onApplyGraduatedSymbology(layer.id, symbology);
-    }
     setIsGraduatedEditorOpen(false);
+    setTimeout(() => {
+        if (layer.type === 'geotiff' || layer.type === 'gee') {
+            props.onApplyGeoTiffStyle(layer.id, symbology as GeoTiffStyle);
+        } else {
+            props.onApplyGraduatedSymbology(layer.id, symbology);
+        }
+    }, 10);
   };
   
   const handleCategorizedSymbologyApply = (symbology: CategorizedSymbology) => {
-    props.onApplyCategorizedSymbology(layer.id, symbology);
     setIsCategorizedEditorOpen(false);
+    setTimeout(() => {
+        props.onApplyCategorizedSymbology(layer.id, symbology);
+    }, 10);
   };
   
   const GoesMetadataTooltip = () => {
@@ -247,9 +255,9 @@ const LayerItem: React.FC<LayerItemProps> = ({
                         <DropdownMenuSub>
                             <DropdownMenuSubTrigger className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simbología</DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600">
-                              {isVectorLayer && <DropdownMenuItem onSelect={() => setIsStyleEditorOpen(true)} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</DropdownMenuItem>}
-                              {isVectorLayer && <DropdownMenuItem onSelect={() => setIsCategorizedEditorOpen(true)} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</DropdownMenuItem>}
-                              {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <DropdownMenuItem onSelect={() => setIsGraduatedEditorOpen(true)} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</DropdownMenuItem>}
+                              {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsStyleEditorOpen(true); }} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</DropdownMenuItem>}
+                              {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsCategorizedEditorOpen(true); }} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</DropdownMenuItem>}
+                              {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGraduatedEditorOpen(true); }} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</DropdownMenuItem>}
                               {layer.type === 'wfs' && (
                                 <>
                                   <DropdownMenuSeparator className="bg-gray-500/50 my-1" />
@@ -259,7 +267,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                             </DropdownMenuSubContent>
                         </DropdownMenuSub>
 
-                        {isVectorLayer && <DropdownMenuItem onSelect={() => setIsLabelEditorOpen(true)} className="text-xs"><Tags className="mr-2 h-3.5 w-3.5" />Etiquetar</DropdownMenuItem>}
+                        {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsLabelEditorOpen(true); }} className="text-xs"><Tags className="mr-2 h-3.5 w-3.5" />Etiquetar</DropdownMenuItem>}
                         {isVectorLayer && <DropdownMenuItem onSelect={() => props.onShowLayerTable(layer.id)} className="text-xs"><Table2 className="mr-2 h-3.5 w-3.5" />Ver tabla de atributos</DropdownMenuItem>}
                         {isVectorLayer && <DropdownMenuItem onSelect={() => props.onShowStatistics(layer.id)} className="text-xs"><BarChartHorizontal className="mr-2 h-3.5 w-3.5" />Estadísticas</DropdownMenuItem>}
                         
@@ -343,12 +351,3 @@ const LayerItem: React.FC<LayerItemProps> = ({
 };
 
 export default LayerItem;
-
-    
-
-
-
-
-
-
-    
