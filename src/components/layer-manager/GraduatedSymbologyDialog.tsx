@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -242,7 +241,6 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
 
     if (isRaster) {
         // For rasters, we don't calculate breaks from data, we just use min/max
-        // The breaks will be evenly spaced within the min/max range.
         const numClasses = Math.max(2, classes);
         const step = (range.max - range.min) / numClasses;
         const breaks = Array.from({ length: numClasses }, (_, i) => range.min + (i + 1) * step);
@@ -320,21 +318,19 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
 
   const handleApply = () => {
     if (isRaster) {
-        // For rasters, we apply a different kind of symbology
         onApply({
-            field: 'Pixel Value', // Placeholder
-            method: 'quantiles', // Method is not strictly used but needed for type
+            field: 'Pixel Value',
+            method: 'quantiles',
             classes: classes,
             colorRamp: colorRamp,
-            breaks: classification?.breaks || [], // Pass generated breaks
-            colors: classification?.colors || [], // Pass generated colors
-            strokeColor: '', // Not used for rasters
-            strokeWidth: 0, // Not used
+            breaks: classification?.breaks || [],
+            colors: classification?.colors || [],
+            strokeColor: '',
+            strokeWidth: 0,
             customColors: colorRamp === 'custom' ? customColors : undefined,
-            // Raster-specific properties
             min: range.min,
             max: range.max,
-            band: 1, // Assume band 1 for now
+            band: 1,
         });
         return;
     }
@@ -368,11 +364,14 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4"
+        onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            document.body.style.pointerEvents = 'auto';
+        }}
+        className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4 z-[10000]"
       >
         <DialogHeader>
           <DialogTitle className="text-base">Simbología Graduada: {layer.name}</DialogTitle>

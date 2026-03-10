@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -149,7 +148,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => 
     const selectedColor = colorOptions.find(c => c.value === value) || { hex: isValidHex(value) ? value : '#000000', iconClass: '' };
 
     return (
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <Popover open={isOpen} onOpenChange={setIsOpen} modal={false}>
             <PopoverTrigger asChild>
                 <Button variant="outline" className="h-8 w-8 p-0 border-white/30 bg-black/20">
                     <div className={cn("w-5 h-5 rounded-full border border-white/20", selectedColor.iconClass)} style={{ backgroundColor: selectedColor.hex }} />
@@ -158,7 +157,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => 
             <PopoverContent 
               side="right" 
               align="start" 
-              className="w-auto p-2 bg-gray-700/90 backdrop-blur-sm border-gray-600"
+              className="w-auto p-2 bg-gray-700/90 backdrop-blur-sm border-gray-600 z-[10001]"
               onCloseAutoFocus={(e) => e.preventDefault()}
             >
                 <div className="grid grid-cols-6 gap-2">
@@ -213,11 +212,14 @@ const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
   const isLine = layerType.includes('LineString');
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        className="bg-gray-800 text-white border-gray-700 sm:max-w-md p-4"
+        onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            document.body.style.pointerEvents = 'auto';
+        }}
+        className="bg-gray-800 text-white border-gray-700 sm:max-w-md p-4 z-[10000]"
       >
         <DialogHeader>
           <DialogTitle>Editor de Simbología</DialogTitle>

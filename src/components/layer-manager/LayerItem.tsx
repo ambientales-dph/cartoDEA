@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -117,6 +116,18 @@ const LayerItem: React.FC<LayerItemProps> = ({
   const [isLabelEditorOpen, setIsLabelEditorOpen] = useState(false);
   const [isGraduatedEditorOpen, setIsGraduatedEditorOpen] = useState(false);
   const [isCategorizedEditorOpen, setIsCategorizedEditorOpen] = useState(false);
+
+  // --- CRITICAL FIX: Global cleanup effect ---
+  useEffect(() => {
+    // If no dialog is open, ensure body pointer events are enabled.
+    // This is a "brute force" fix for the Radix UI focus/lock issue when nesting.
+    if (!isStyleEditorOpen && !isLabelEditorOpen && !isGraduatedEditorOpen && !isCategorizedEditorOpen && !isRenameDialogOpen) {
+      const timer = setTimeout(() => {
+        document.body.style.pointerEvents = 'auto';
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isStyleEditorOpen, isLabelEditorOpen, isGraduatedEditorOpen, isCategorizedEditorOpen, isRenameDialogOpen]);
 
   useEffect(() => {
     if (isRenameDialogOpen) {
@@ -345,10 +356,42 @@ const LayerItem: React.FC<LayerItemProps> = ({
                 <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleRenameSubmit}>Guardar</AlertDialogAction></AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            {isVectorLayer && (<StyleEditorDialog isOpen={isStyleEditorOpen} onClose={() => setIsStyleEditorOpen(false)} onApply={handleStyleChange} layerType={(layer.olLayer as VectorLayer<any>).getSource()?.getFeatures()[0]?.getGeometry()?.getType() || 'Point'}/>)}
-            {isVectorLayer && (<LabelEditorDialog isOpen={isLabelEditorOpen} onClose={() => setIsLabelEditorOpen(false)} onApply={handleLabelChange} layer={layer as any}/>)}
-            {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && (<GraduatedSymbologyDialog isOpen={isGraduatedEditorOpen} onClose={() => setIsGraduatedEditorOpen(false)} onApply={handleGraduatedSymbologyApply} layer={layer}/>)}
-            {isVectorLayer && (<CategorizedSymbologyDialog isOpen={isCategorizedEditorOpen} onClose={() => setIsCategorizedEditorOpen(false)} onApply={handleCategorizedSymbologyApply} layer={layer as any}/>)}
+            
+            {isVectorLayer && (
+              <StyleEditorDialog 
+                isOpen={isStyleEditorOpen} 
+                onClose={() => setIsStyleEditorOpen(false)} 
+                onApply={handleStyleChange} 
+                layerType={(layer.olLayer as VectorLayer<any>).getSource()?.getFeatures()[0]?.getGeometry()?.getType() || 'Point'}
+              />
+            )}
+            
+            {isVectorLayer && (
+              <LabelEditorDialog 
+                isOpen={isLabelEditorOpen} 
+                onClose={() => setIsLabelEditorOpen(false)} 
+                onApply={handleLabelChange} 
+                layer={layer as any}
+              />
+            )}
+            
+            {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && (
+              <GraduatedSymbologyDialog 
+                isOpen={isGraduatedEditorOpen} 
+                onClose={() => setIsGraduatedEditorOpen(false)} 
+                onApply={handleGraduatedSymbologyApply} 
+                layer={layer}
+              />
+            )}
+            
+            {isVectorLayer && (
+              <CategorizedSymbologyDialog 
+                isOpen={isCategorizedEditorOpen} 
+                onClose={() => setIsCategorizedEditorOpen(false)} 
+                onApply={handleCategorizedSymbologyApply} 
+                layer={layer as any}
+              />
+            )}
         </>
       )}
     </>

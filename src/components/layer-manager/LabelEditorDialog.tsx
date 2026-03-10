@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -68,7 +67,6 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
 
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
 
-  // This useMemo now correctly re-evaluates when the dialog is opened (because `isOpen` is a dependency)
   const attributeFields = useMemo(() => {
     if (!isOpen || !layer) return [];
     const source = layer.olLayer.getSource();
@@ -114,7 +112,6 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
         
         const existingOptions = layer?.olLayer.get('labelOptions');
         if (existingOptions) {
-          // If existing options don't have a label part but now there are fields, add one.
           if (existingOptions.labelParts.length === 0 && attributeFields.length > 0) {
             existingOptions.labelParts = [{ id: nanoid(), type: 'field', value: attributeFields[0] }];
           }
@@ -182,11 +179,14 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
   }, [labelOptions.labelParts]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        className="bg-gray-800 text-white border-gray-700 sm:max-w-[550px] p-4"
+        onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            document.body.style.pointerEvents = 'auto';
+        }}
+        className="bg-gray-800 text-white border-gray-700 sm:max-w-[550px] p-4 z-[10000]"
       >
         <DialogHeader>
           <DialogTitle>Configurar Etiquetas para "{layer.name}"</DialogTitle>
