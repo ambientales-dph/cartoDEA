@@ -1,4 +1,3 @@
-
 'use client';
 
 import React,
@@ -180,7 +179,6 @@ import { transform } from 'ol/proj';
 import { Slider } from '../ui/slider';
 import Overlay from 'ol/Overlay';
 import * as htmlToImage from 'html-to-image';
-import jsPDF from 'jspdf';
 import { Separator } from '../ui/separator';
 
 
@@ -900,7 +898,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     };
 
 
-    const handleDownloadProfile = (format: 'csv' | 'jpg' | 'pdf') => {
+    const handleDownloadProfile = async (format: 'csv' | 'jpg' | 'pdf') => {
         if (!profileData) {
             toast({ description: "No hay datos de perfil para descargar.", variant: "destructive" });
             return;
@@ -950,21 +948,21 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     toast({ description: "Error al generar JPG.", variant: "destructive" });
                 });
         } else if (format === 'pdf') {
-            htmlToImage.toCanvas(chartElement, { backgroundColor: 'hsl(var(--background))' })
-                .then(function (canvas) {
-                    const imgData = canvas.toDataURL('image/png');
-                    const pdf = new jsPDF({
-                        orientation: 'landscape',
-                        unit: 'px',
-                        format: [canvas.width, canvas.height]
-                    });
-                    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-                    pdf.save("perfil_topografico.pdf");
-                })
-                .catch(function (error) {
-                    console.error('Error al generar PDF:', error);
-                    toast({ description: "Error al generar PDF.", variant: "destructive" });
+            try {
+                const { jsPDF } = await import('jspdf');
+                const canvas = await htmlToImage.toCanvas(chartElement, { backgroundColor: 'hsl(var(--background))' });
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF({
+                    orientation: 'landscape',
+                    unit: 'px',
+                    format: [canvas.width, canvas.height]
                 });
+                pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+                pdf.save("perfil_topografico.pdf");
+            } catch (error) {
+                console.error('Error al generar PDF:', error);
+                toast({ description: "Error al generar PDF.", variant: "destructive" });
+            }
         }
     };
 
