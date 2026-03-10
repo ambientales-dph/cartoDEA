@@ -209,7 +209,11 @@ const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent onOpenAutoFocus={(e) => e.preventDefault()} className="bg-gray-800 text-white border-gray-700 sm:max-w-md p-4">
+      <DialogContent 
+        onOpenAutoFocus={(e) => e.preventDefault()} 
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        className="bg-gray-800 text-white border-gray-700 sm:max-w-md p-4"
+      >
         <DialogHeader>
           <DialogTitle>Editor de Simbología</DialogTitle>
         </DialogHeader>

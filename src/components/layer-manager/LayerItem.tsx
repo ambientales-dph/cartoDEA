@@ -132,9 +132,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
   };
 
   const handleStyleChange = (styleOptions: StyleOptions) => {
-    // Cerramos el diálogo primero para permitir que Radix limpie el overlay correctamente
     setIsStyleEditorOpen(false);
-    // Ejecutamos la actualización de la capa con un micro-delay
     setTimeout(() => {
         props.onChangeLayerStyle(layer.id, styleOptions);
     }, 10);
@@ -334,7 +332,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
       {!props.isSharedView && (
         <>
             <AlertDialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
-              <AlertDialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
+              <AlertDialogContent onOpenAutoFocus={(e) => e.preventDefault()} onCloseAutoFocus={(e) => e.preventDefault()}>
                 <AlertDialogHeader><AlertDialogTitle>Renombrar Capa</AlertDialogTitle><AlertDialogDescription>Ingrese el nuevo nombre para la capa "{layer.name}".</AlertDialogDescription></AlertDialogHeader>
                 <Input value={editingName} onChange={(e) => setEditingName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()} autoFocus/>
                 <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleRenameSubmit}>Guardar</AlertDialogAction></AlertDialogFooter>
