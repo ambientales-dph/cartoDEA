@@ -236,7 +236,14 @@ const LayerItem: React.FC<LayerItemProps> = ({
                             <Settings2 className="h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent onClick={(e) => e.stopPropagation()} side="right" align="start" sideOffset={270} className="bg-gray-700 text-white border-gray-600 w-56">
+                    <DropdownMenuContent 
+                      onClick={(e) => e.stopPropagation()} 
+                      onCloseAutoFocus={(e) => e.preventDefault()}
+                      side="right" 
+                      align="start" 
+                      sideOffset={270} 
+                      className="bg-gray-700 text-white border-gray-600 w-56"
+                    >
                         <DropdownMenuItem onSelect={() => props.onZoomToExtent(layer.id)} className="text-xs">
                           <ZoomIn className="mr-2 h-3.5 w-3.5" /> Ir a la extensión
                         </DropdownMenuItem>
@@ -252,7 +259,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
 
                         <DropdownMenuSub>
                             <DropdownMenuSubTrigger className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simbología</DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600">
+                            <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                               {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsStyleEditorOpen(true); }} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</DropdownMenuItem>}
                               {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsCategorizedEditorOpen(true); }} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</DropdownMenuItem>}
                               {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGraduatedEditorOpen(true); }} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</DropdownMenuItem>}
@@ -272,7 +279,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                         {isVectorLayer && (
                             <DropdownMenuSub>
                                 <DropdownMenuSubTrigger className="text-xs disabled:opacity-50" disabled={props.allLayers.filter(l => l.id !== layer.id && ('olLayer' in l && l.olLayer instanceof VectorLayer)).length === 0}><Target className="mr-2 h-3.5 w-3.5" />Seleccionar por Capa</DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600">
+                                <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                                     {props.allLayers.filter((l): l is VectorMapLayer => l.id !== layer.id && l.olLayer instanceof VectorLayer).map(selectorLayer => (
                                         <DropdownMenuItem key={selectorLayer.id} onSelect={() => props.onSelectByLayer(layer.id, selectorLayer.id)} className="text-xs">{selectorLayer.name}</DropdownMenuItem>
                                     ))}
@@ -283,7 +290,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                         {(isVectorLayer || layer.type === 'wms' || layer.type === 'geotiff' || layer.type === 'gee') && (
                           <DropdownMenuSub>
                             <DropdownMenuSubTrigger className="text-xs"><Download className="mr-2 h-3.5 w-3.5" />Exportar Capa</DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600">
+                            <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                               {isVectorLayer && <DropdownMenuItem onSelect={() => props.onExportLayer(layer.id, 'geojson')} className="text-xs">GeoJSON</DropdownMenuItem>}
                               {isVectorLayer && <DropdownMenuItem onSelect={() => props.onExportLayer(layer.id, 'kml')} className="text-xs">KML</DropdownMenuItem>}
                               {isVectorLayer && <DropdownMenuItem onSelect={() => props.onExportLayer(layer.id, 'shp')} className="text-xs">Shapefile (.zip)</DropdownMenuItem>}

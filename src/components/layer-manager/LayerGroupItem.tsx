@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState } from 'react';
@@ -43,7 +42,7 @@ import { Label } from '../ui/label';
 interface LayerGroupItemProps {
     group: LayerGroup;
     allLayers: MapLayer[];
-    onToggleGroupVisibility: (groupId: string) => void; // New prop
+    onToggleGroupVisibility: (groupId: string) => void; 
     onToggleVisibility: (layerId: string, groupId?: string) => void;
     onZoomToExtent: (layerId: string) => void;
     onShowLayerTable: (layerId: string) => void;
@@ -174,7 +173,13 @@ const LayerGroupItem: React.FC<LayerGroupItemProps> = ({
                           <MoreVertical className="h-4 w-4" />
                       </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent onClick={(e) => e.stopPropagation()} side="right" align="start" className="bg-gray-700 text-white border-gray-600">
+                  <DropdownMenuContent 
+                    onClick={(e) => e.stopPropagation()} 
+                    onCloseAutoFocus={(e) => e.preventDefault()}
+                    side="right" 
+                    align="start" 
+                    className="bg-gray-700 text-white border-gray-600"
+                  >
                     <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsRenameDialogOpen(true); }} className="text-xs">
                        <Edit className="mr-2 h-3.5 w-3.5" /> Renombrar Grupo
                     </DropdownMenuItem>
@@ -227,7 +232,7 @@ const LayerGroupItem: React.FC<LayerGroupItemProps> = ({
                 </DropdownMenu>
 
                 <AlertDialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
-                    <AlertDialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
+                    <AlertDialogContent onOpenAutoFocus={(e) => e.preventDefault()} onCloseAutoFocus={(e) => e.preventDefault()}>
                       <AlertDialogHeader>
                         <AlertDialogTitle>Renombrar Grupo</AlertDialogTitle>
                         <AlertDialogDescription>

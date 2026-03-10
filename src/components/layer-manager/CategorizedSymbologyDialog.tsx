@@ -58,7 +58,7 @@ function generateColorRamp(startHex: string, endHex: string, count: number): str
     return ramp;
 }
 
-const COLOR_RAMP_DEFINITIONS: Record<Exclude<ColorRampId, 'custom'>, { start: string, end: string }> = {
+const COLOR_RAMP_DEFINITIONS: Record<Exclude<ColorRampId, 'custom' | 'smn-cloudtop'>, { start: string, end: string }> = {
   reds: { start: '#fee5d9', end: '#a50f15' },
   blues: { start: '#eff3ff', end: '#08519c' },
   greens: { start: '#edf8e9', end: '#006d2c' },
@@ -164,7 +164,7 @@ const CategorizedSymbologyDialog: React.FC<CategorizedSymbologyDialogProps> = ({
         startColor = customColors.start;
         endColor = customColors.end;
     } else {
-        const rampDefinition = COLOR_RAMP_DEFINITIONS[colorRamp];
+        const rampDefinition = (COLOR_RAMP_DEFINITIONS as any)[colorRamp];
         startColor = rampDefinition.start;
         endColor = rampDefinition.end;
     }
@@ -223,8 +223,8 @@ const CategorizedSymbologyDialog: React.FC<CategorizedSymbologyDialogProps> = ({
           startColor = customColors.start;
           endColor = customColors.end;
       } else {
-          startColor = COLOR_RAMP_DEFINITIONS[colorRamp].start;
-          endColor = COLOR_RAMP_DEFINITIONS[colorRamp].end;
+          startColor = (COLOR_RAMP_DEFINITIONS as any)[colorRamp].start;
+          endColor = (COLOR_RAMP_DEFINITIONS as any)[colorRamp].end;
       }
       const newColors = generateColorRamp(startColor, endColor, newCategories.length);
       const finalCategories = newCategories.map((cat, index) => ({...cat, color: newColors[index]}));
@@ -247,12 +247,12 @@ const CategorizedSymbologyDialog: React.FC<CategorizedSymbologyDialogProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><Label htmlFor="field-select" className="text-xs">Campo</Label>
                 <Select value={field} onValueChange={setField}><SelectTrigger id="field-select" className="h-8 text-xs bg-black/20"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">{attributeFields.map(f => <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>)}</SelectContent>
+                  <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>{attributeFields.map(f => <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1"><Label htmlFor="ramp-select" className="text-xs">Rampa de Color</Label>
                 <Select value={colorRamp} onValueChange={(v) => setColorRamp(v as ColorRampId)}><SelectTrigger id="ramp-select" className="h-8 text-xs bg-black/20"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">
+                  <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                     {Object.entries(COLOR_RAMP_DEFINITIONS).map(([rampId, {start, end}]) => (<SelectItem key={rampId} value={rampId} className="text-xs"><div className="flex items-center gap-2"><div className="flex h-4 w-16 rounded-sm overflow-hidden" style={{ background: `linear-gradient(to right, ${start}, ${end})` }} />{rampId.charAt(0).toUpperCase() + rampId.slice(1)}</div></SelectItem>))}
                     <SelectItem value="custom" className="text-xs">Personalizada</SelectItem>
                   </SelectContent>

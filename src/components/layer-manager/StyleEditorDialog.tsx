@@ -155,7 +155,12 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => 
                     <div className={cn("w-5 h-5 rounded-full border border-white/20", selectedColor.iconClass)} style={{ backgroundColor: selectedColor.hex }} />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent side="right" align="start" className="w-auto p-2 bg-gray-700/90 backdrop-blur-sm border-gray-600">
+            <PopoverContent 
+              side="right" 
+              align="start" 
+              className="w-auto p-2 bg-gray-700/90 backdrop-blur-sm border-gray-600"
+              onCloseAutoFocus={(e) => e.preventDefault()}
+            >
                 <div className="grid grid-cols-6 gap-2">
                     {colorOptions.map(color => (
                         <Button key={color.value} variant="outline" className={cn("h-7 w-7 p-0", value === color.value ? "ring-2 ring-offset-2 ring-offset-gray-700 ring-white" : "border-white/30")} onClick={() => { onChange(color.value); setIsOpen(false); }}>
@@ -270,7 +275,7 @@ const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
                     <SelectTrigger id="line-style" className="h-8 text-xs bg-black/20 w-28">
                       <SelectValue placeholder="Seleccionar estilo" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-700 text-white border-gray-600">
+                    <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                       <SelectItem value="solid" className="text-xs">Continua</SelectItem>
                       <SelectItem value="dashed" className="text-xs">Trazos</SelectItem>
                       <SelectItem value="dotted" className="text-xs">Puntos</SelectItem>

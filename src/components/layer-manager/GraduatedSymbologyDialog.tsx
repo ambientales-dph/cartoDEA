@@ -387,7 +387,7 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
                   <SelectTrigger id="field-select" className="h-8 text-xs bg-black/20">
                     <SelectValue placeholder="Seleccionar..." />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">
+                  <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                     {numericFields.map(f => <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -398,7 +398,7 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
                   <SelectTrigger id="method-select" className="h-8 text-xs bg-black/20">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">
+                  <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <SelectItem value="quantiles" className="text-xs">Cuantiles (Equal Count)</SelectItem>
                     <SelectItem value="natural-breaks" className="text-xs">Natural Breaks (Jenks)</SelectItem>
                   </SelectContent>
@@ -425,7 +425,7 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
                   <SelectTrigger id="ramp-select" className="h-8 text-xs bg-black/20">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">
+                  <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                     {Object.entries(COLOR_RAMP_DEFINITIONS).map(([rampId, {start, end, isFullPalette}]) => (
                       <SelectItem key={rampId} value={rampId} className="text-xs">
                         <div className="flex items-center gap-2">
@@ -436,7 +436,7 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
                                 : { background: `linear-gradient(to right, ${start}, ${end})` }
                             }
                           />
-                          {rampId === 'smn-cloudtop' ? 'SMN Topes Nubosos' : rampId.charAt(0).toUpperCase() + rampId.slice(1)}
+                          {rampId === 'smn-cloudtop' ? 'SMN Topes Nubosos' : (rampId as string).charAt(0).toUpperCase() + (rampId as string).slice(1)}
                         </div>
                       </SelectItem>
                     ))}

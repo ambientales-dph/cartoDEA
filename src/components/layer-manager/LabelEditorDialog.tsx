@@ -220,7 +220,7 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
                                     <SelectTrigger className="h-7 text-xs flex-grow bg-black/30">
                                         <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-gray-700 text-white border-gray-600">
+                                    <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                                         {attributeFields.map(field => (
                                             <SelectItem key={field} value={field} className="text-xs">{field}</SelectItem>
                                         ))}
@@ -283,7 +283,7 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
                   <SelectTrigger id="font-family" className="h-8 text-xs bg-black/20 w-32">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">
+                  <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                     {fontOptions.map(font => (
                       <SelectItem key={font.value} value={font.value} className="text-xs" style={{ fontFamily: font.value }}>
                         {font.label}
@@ -336,7 +336,7 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
                             <SelectTrigger id="label-placement" className="h-8 text-xs bg-black/20 w-full">
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="bg-gray-700 text-white border-gray-600">
+                            <SelectContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                               <SelectItem value="horizontal" className="text-xs">Horizontal</SelectItem>
                               <SelectItem value="parallel" className="text-xs">Paralelo a la línea</SelectItem>
                             </SelectContent>
