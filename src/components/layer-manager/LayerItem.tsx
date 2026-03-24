@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -45,6 +45,7 @@ import { useLayerManager } from '@/hooks/layer-manager/useLayerManager';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
+import { Style, Stroke, Fill, Circle as CircleStyle } from 'ol/style';
 
 interface LayerItemProps {
   layer: MapLayer;
@@ -117,16 +118,6 @@ const LayerItem: React.FC<LayerItemProps> = ({
   const [isGraduatedEditorOpen, setIsGraduatedEditorOpen] = useState(false);
   const [isCategorizedEditorOpen, setIsCategorizedEditorOpen] = useState(false);
 
-  // Global cleanup to ensure body interaction is restored
-  useEffect(() => {
-    if (!isStyleEditorOpen && !isLabelEditorOpen && !isGraduatedEditorOpen && !isCategorizedEditorOpen && !isRenameDialogOpen) {
-      const timer = setTimeout(() => {
-        document.body.style.pointerEvents = 'auto';
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [isStyleEditorOpen, isLabelEditorOpen, isGraduatedEditorOpen, isCategorizedEditorOpen, isRenameDialogOpen]);
-
   useEffect(() => {
     if (isRenameDialogOpen) {
       setEditingName(layer.name);
@@ -171,6 +162,47 @@ const LayerItem: React.FC<LayerItemProps> = ({
         props.onApplyCategorizedSymbology(layer.id, symbology);
     }, 10);
   };
+
+  // Helper to reverse map color names from hex
+  const colorMapReverse: Record<string, string> = {
+    '#e63946': 'rojo',
+    '#2a9d8f': 'verde',
+    '#0077b6': 'azul',
+    '#ffbe0b': 'amarillo',
+    '#f4a261': 'naranja',
+    '#8338ec': 'violeta',
+    '#000000': 'negro',
+    '#ffffff': 'blanco',
+    '#adb5bd': 'gris',
+    '#00ffff': 'cian',
+    '#ff00ff': 'magenta',
+    'rgba(0,0,0,0)': 'transparent',
+  };
+
+  const currentStyleOptions = useMemo((): StyleOptions => {
+    if (!isVectorLayer) return { strokeColor: 'azul', fillColor: 'azul', lineWidth: 2, lineStyle: 'solid', pointSize: 5 };
+    
+    const olLayer = layer.olLayer as VectorLayer<any>;
+    const style = (olLayer.get('originalStyle') || olLayer.getStyle());
+    const baseStyle = Array.isArray(style) ? style[0] : (typeof style === 'function' ? style(new Feature(), 1) : style);
+    
+    if (!(baseStyle instanceof Style)) return { strokeColor: 'azul', fillColor: 'azul', lineWidth: 2, lineStyle: 'solid', pointSize: 5 };
+
+    const stroke = baseStyle.getStroke();
+    const fill = baseStyle.getFill();
+    const image = baseStyle.getImage();
+
+    const strokeHex = stroke?.getColor() ? String(stroke.getColor()) : '#0077b6';
+    const fillHex = fill?.getColor() ? String(fill.getColor()) : '#0077b6';
+    
+    return {
+        strokeColor: colorMapReverse[strokeHex] || strokeHex,
+        fillColor: colorMapReverse[fillHex] || fillHex,
+        lineWidth: stroke?.getWidth() || 2,
+        lineStyle: stroke?.getLineDash() ? 'dashed' : 'solid',
+        pointSize: image instanceof CircleStyle ? image.getRadius() : 5
+    };
+  }, [layer, isVectorLayer]);
   
   const GoesMetadataTooltip = () => {
     const isGoesLayer = (layer.type === 'geotiff' || layer.type === 'gee') && layer.olLayer.get('geeParams')?.bandCombination === 'GOES_CLOUDTOP';
@@ -239,7 +271,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                 )}
 
                 {!props.isSharedView && (
-                  <DropdownMenu modal={false}>
+                  <DropdownMenu onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-white/70 hover:bg-white/10 mr-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
                             <Settings2 className="h-4 w-4" />
@@ -250,7 +282,6 @@ const LayerItem: React.FC<LayerItemProps> = ({
                       onCloseAutoFocus={(e) => e.preventDefault()}
                       side="right" 
                       align="start" 
-                      sideOffset={270} 
                       className="bg-gray-700 text-white border-gray-600 w-56"
                     >
                         <DropdownMenuItem onSelect={() => props.onZoomToExtent(layer.id)} className="text-xs">
@@ -360,6 +391,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                 isOpen={isStyleEditorOpen} 
                 onClose={() => setIsStyleEditorOpen(false)} 
                 onApply={handleStyleChange} 
+                initialOptions={currentStyleOptions}
                 layerType={(layer.olLayer as VectorLayer<any>).getSource()?.getFeatures()[0]?.getGeometry()?.getType() || 'Point'}
               />
             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -26,14 +26,13 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { StyleOptions } from '@/lib/types';
 import { Slider } from '../ui/slider';
-import { Minus, Plus, Palette } from 'lucide-react';
-
 
 interface StyleEditorDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onApply: (options: StyleOptions) => void;
-  layerType: 'Point' | 'LineString' | 'Polygon' | 'MultiPoint' | 'MultiLineString' | 'MultiPolygon' | 'Circle' | 'GeometryCollection';
+  initialOptions?: StyleOptions;
+  layerType: string;
 }
 
 const colorOptions = [
@@ -53,7 +52,6 @@ const colorOptions = [
 
 const isValidHex = (color: string) => /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
 
-// --- Color Conversion Helpers ---
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
@@ -98,7 +96,6 @@ function rgbToHex(r: number, g: number, b: number): string {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).padStart(6, '0');
 }
 
-
 interface ColorPickerProps {
   value: string;
   onChange: (value: string) => void;
@@ -138,33 +135,50 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => 
         }
     };
     
-    const handleApply = () => {
+    const handleApplyCustom = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (isValidHex(hexInput)) {
             onChange(hexInput);
             setIsOpen(false);
         }
     };
+
+    const handleSelectPreset = (e: React.MouseEvent, colorValue: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onChange(colorValue);
+        setIsOpen(false);
+    };
     
     const selectedColor = colorOptions.find(c => c.value === value) || { hex: isValidHex(value) ? value : '#000000', iconClass: '' };
 
     return (
-        <Popover open={isOpen} onOpenChange={setIsOpen} modal={false}>
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
             <PopoverTrigger asChild>
-                <Button variant="outline" className="h-8 w-8 p-0 border-white/30 bg-black/20">
+                <Button type="button" variant="outline" className="h-8 w-8 p-0 border-white/30 bg-black/20">
                     <div className={cn("w-5 h-5 rounded-full border border-white/20", selectedColor.iconClass)} style={{ backgroundColor: selectedColor.hex }} />
                 </Button>
             </PopoverTrigger>
             <PopoverContent 
               side="right" 
               align="start" 
-              className="w-auto p-2 bg-gray-700/90 backdrop-blur-sm border-gray-600 z-[10001]"
+              className="w-auto p-2 bg-gray-700/95 backdrop-blur-sm border-gray-600 z-[10001]"
               onCloseAutoFocus={(e) => e.preventDefault()}
             >
                 <div className="grid grid-cols-6 gap-2">
                     {colorOptions.map(color => (
-                        <Button key={color.value} variant="outline" className={cn("h-7 w-7 p-0", value === color.value ? "ring-2 ring-offset-2 ring-offset-gray-700 ring-white" : "border-white/30")} onClick={() => { onChange(color.value); setIsOpen(false); }}>
-                            <div className={cn("w-5 h-5 rounded-full border border-white/20", color.iconClass)} style={{ backgroundColor: color.hex }} />
-                        </Button>
+                        <button 
+                            key={color.value} 
+                            type="button"
+                            className={cn(
+                                "h-7 w-7 rounded-md border flex items-center justify-center transition-all hover:scale-110", 
+                                value === color.value ? "ring-2 ring-offset-2 ring-offset-gray-700 ring-white" : "border-white/30"
+                            )} 
+                            onClick={(e) => handleSelectPreset(e, color.value)}
+                        >
+                            <div className={cn("w-5 h-5 rounded-full border border-white/10", color.iconClass)} style={{ backgroundColor: color.hex }} />
+                        </button>
                     ))}
                 </div>
                 <div className="mt-3 pt-3 border-t border-gray-600 space-y-3">
@@ -172,7 +186,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => 
                     <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-md border border-white/30" style={{ backgroundColor: hexInput }} />
                         <Input type="text" value={hexInput} onChange={handleHexInputChange} className="h-8 text-xs bg-black/20 w-24 text-white/90" placeholder="#RRGGBB" />
-                        <Button onClick={handleApply} size="sm" className="h-8 text-xs" disabled={!isValidHex(hexInput)}>Aplicar</Button>
+                        <Button type="button" onClick={handleApplyCustom} size="sm" className="h-8 text-xs" disabled={!isValidHex(hexInput)}>Aplicar</Button>
                     </div>
                     <div className="space-y-2">
                         <Label className="text-xs">Tono</Label>
@@ -188,11 +202,11 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange }) => 
     );
 };
 
-
 const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
   isOpen,
   onClose,
   onApply,
+  initialOptions,
   layerType,
 }) => {
   const [styleOptions, setStyleOptions] = useState<StyleOptions>({
@@ -202,6 +216,12 @@ const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
     lineStyle: 'solid',
     pointSize: 5,
   });
+
+  useEffect(() => {
+    if (isOpen && initialOptions) {
+      setStyleOptions(initialOptions);
+    }
+  }, [isOpen, initialOptions]);
 
   const handleApply = () => {
     onApply(styleOptions);
@@ -224,7 +244,7 @@ const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
         <div className="grid grid-cols-1 gap-4 py-2">
             <div className="flex items-end gap-3 w-full justify-around flex-wrap">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="stroke-color" className="text-xs">
+                <Label className="text-xs">
                   {isPoint ? 'Borde' : 'Contorno'}
                 </Label>
                 <ColorPicker 
@@ -235,7 +255,7 @@ const StyleEditorDialog: React.FC<StyleEditorDialogProps> = ({
               
               {(isPolygon || isPoint) && (
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="fill-color" className="text-xs">
+                  <Label className="text-xs">
                     Relleno
                   </Label>
                   <ColorPicker 
