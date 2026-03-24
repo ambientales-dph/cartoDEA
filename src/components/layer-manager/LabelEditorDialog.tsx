@@ -184,6 +184,8 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
         onCloseAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
         className="bg-gray-800 text-white border-gray-700 sm:max-w-[550px] p-4 z-[10000] shadow-2xl"
       >
         <DialogHeader>

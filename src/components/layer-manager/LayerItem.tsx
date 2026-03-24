@@ -32,7 +32,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider"; 
-import { Eye, EyeOff, Settings2, ZoomIn, Table2, Trash2, Scissors, Percent, GripVertical, CopyPlus, Download, Edit, Palette, Tags, Waypoints, AppWindow, BarChartHorizontal, Target, Image as ImageIcon, Info, Check, Dot } from 'lucide-react';
+import { Eye, EyeOff, Settings2, ZoomIn, Table2, Trash2, Scissors, Percent, GripVertical, CopyPlus, Download, Edit, Palette, Tags, Waypoints, AppWindow, BarChartHorizontal, Target, Image as ImageIcon, Info, Check, Dot, MoreVertical } from 'lucide-react';
 import type { CategorizedSymbology, GeoTiffStyle, GraduatedSymbology, InteractionToolId, LabelOptions, MapLayer, VectorMapLayer } from '@/lib/types';
 import VectorLayer from 'ol/layer/Vector'; 
 import WebGLTileLayer from 'ol/layer/WebGLTile';
@@ -42,7 +42,6 @@ import StyleEditorDialog, { type StyleOptions } from './StyleEditorDialog';
 import LabelEditorDialog from './LabelEditorDialog';
 import GraduatedSymbologyDialog from './GraduatedSymbologyDialog';
 import CategorizedSymbologyDialog from './CategorizedSymbologyDialog';
-import { useLayerManager } from '@/hooks/layer-manager/useLayerManager';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
@@ -287,7 +286,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                         <DropdownMenuItem onSelect={() => props.onZoomToExtent(layer.id)} className="text-xs">
                           <ZoomIn className="mr-2 h-3.5 w-3.5" /> Ir a la extensión
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setIsRenameDialogOpen(true)} className="text-xs">
+                        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsRenameDialogOpen(true); }} className="text-xs">
                           <Edit className="mr-2 h-3.5 w-3.5" /> Renombrar Capa
                         </DropdownMenuItem>
                         
@@ -300,9 +299,9 @@ const LayerItem: React.FC<LayerItemProps> = ({
                         <DropdownMenuSub>
                             <DropdownMenuSubTrigger className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simbología</DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
-                              {isVectorLayer && <DropdownMenuItem onSelect={() => setIsStyleEditorOpen(true)} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</DropdownMenuItem>}
-                              {isVectorLayer && <DropdownMenuItem onSelect={() => setIsCategorizedEditorOpen(true)} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</DropdownMenuItem>}
-                              {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <DropdownMenuItem onSelect={() => setIsGraduatedEditorOpen(true)} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</DropdownMenuItem>}
+                              {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsStyleEditorOpen(true); }} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</DropdownMenuItem>}
+                              {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsCategorizedEditorOpen(true); }} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</DropdownMenuItem>}
+                              {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGraduatedEditorOpen(true); }} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</DropdownMenuItem>}
                               {layer.type === 'wfs' && (
                                 <>
                                   <DropdownMenuSeparator className="bg-gray-500/50 my-1" />
@@ -312,9 +311,9 @@ const LayerItem: React.FC<LayerItemProps> = ({
                             </DropdownMenuSubContent>
                         </DropdownMenuSub>
 
-                        {isVectorLayer && <DropdownMenuItem onSelect={() => setIsLabelEditorOpen(true)} className="text-xs"><Tags className="mr-2 h-3.5 w-3.5" />Etiquetar</DropdownMenuItem>}
-                        {isVectorLayer && <DropdownMenuItem onSelect={() => props.onShowLayerTable(layer.id)} className="text-xs"><Table2 className="mr-2 h-3.5 w-3.5" />Ver tabla de atributos</DropdownMenuItem>}
-                        {isVectorLayer && <DropdownMenuItem onSelect={() => props.onShowStatistics(layer.id)} className="text-xs"><BarChartHorizontal className="mr-2 h-3.5 w-3.5" />Estadísticas</DropdownMenuItem>}
+                        {isVectorLayer && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsLabelEditorOpen(true); }} className="text-xs"><Tags className="mr-2 h-3.5 w-3.5" />Etiquetar</DropdownMenuItem>}
+                        <DropdownMenuItem onSelect={() => props.onShowLayerTable(layer.id)} className="text-xs"><Table2 className="mr-2 h-3.5 w-3.5" />Ver tabla de atributos</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => props.onShowStatistics(layer.id)} className="text-xs"><BarChartHorizontal className="mr-2 h-3.5 w-3.5" />Estadísticas</DropdownMenuItem>
                         
                         {isVectorLayer && (
                             <DropdownMenuSub>
