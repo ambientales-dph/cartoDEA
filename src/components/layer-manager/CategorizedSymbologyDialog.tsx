@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -234,11 +235,11 @@ const CategorizedSymbologyDialog: React.FC<CategorizedSymbologyDialogProps> = ({
 
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
         onCloseAutoFocus={(e) => e.preventDefault()}
-        className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4 z-[10000]"
+        className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4 z-[10000] shadow-2xl"
       >
         <DialogHeader><DialogTitle className="text-base">Simbología por Categorías: {layer.name}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-1 gap-3 py-1">

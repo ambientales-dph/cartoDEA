@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -179,11 +180,11 @@ const LabelEditorDialog: React.FC<LabelEditorDialogProps> = ({
   }, [labelOptions.labelParts]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
         onCloseAutoFocus={(e) => e.preventDefault()}
-        className="bg-gray-800 text-white border-gray-700 sm:max-w-[550px] p-4 z-[10000]"
+        className="bg-gray-800 text-white border-gray-700 sm:max-w-[550px] p-4 z-[10000] shadow-2xl"
       >
         <DialogHeader>
           <DialogTitle>Configurar Etiquetas para "{layer.name}"</DialogTitle>

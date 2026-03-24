@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -77,7 +78,7 @@ function generateColorRamp(startHexOrPalette: string, endHex: string, count: num
     return ramp;
 }
 
-// --- Jenks Natural Breaks Algorithm (Corrected Implementation) ---
+// --- Jenks Natural Breaks Algorithm ---
 
 function jenks(data: number[], n_classes: number): number[] {
   if (n_classes > data.length) return [];
@@ -364,11 +365,11 @@ const GraduatedSymbologyDialog: React.FC<GraduatedSymbologyDialogProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={false}>
       <DialogContent 
         onOpenAutoFocus={(e) => e.preventDefault()} 
         onCloseAutoFocus={(e) => e.preventDefault()}
-        className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4 z-[10000]"
+        className="bg-gray-800 text-white border-gray-700 sm:max-w-[480px] p-4 z-[10000] shadow-2xl"
       >
         <DialogHeader>
           <DialogTitle className="text-base">Simbología Graduada: {layer.name}</DialogTitle>

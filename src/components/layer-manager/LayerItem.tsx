@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -163,7 +164,6 @@ const LayerItem: React.FC<LayerItemProps> = ({
     }, 10);
   };
 
-  // Helper to reverse map color names from hex
   const colorMapReverse: Record<string, string> = {
     '#e63946': 'rojo',
     '#2a9d8f': 'verde',
@@ -271,7 +271,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                 )}
 
                 {!props.isSharedView && (
-                  <DropdownMenu onCloseAutoFocus={(e) => e.preventDefault()}>
+                  <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-white/70 hover:bg-white/10 mr-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
                             <Settings2 className="h-4 w-4" />
@@ -339,7 +339,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                           </DropdownMenuSub>
                         )}
 
-                        {isVectorLayer && <DropdownMenuSeparator className="bg-gray-500/50" />}
+                        <DropdownMenuSeparator className="bg-gray-500/50" />
 
                         {isVectorLayer && (
                           <>
