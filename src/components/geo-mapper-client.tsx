@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -1077,7 +1078,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                 />
               </div>
 
-              <DropdownMenu>
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
@@ -1123,7 +1124,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                     Capturar Imagen del Mapa
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onSelect={() => setIsShareDialogOpen(true)}
+                    onSelect={(e) => {
+                        e.preventDefault();
+                        setIsShareDialogOpen(true);
+                    }}
                     className="text-xs"
                   >
                     <Share2 className="h-4 w-4 mr-2" />
@@ -1146,7 +1150,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                 <ZoomIn className="h-4 w-4" />
               </Button>
               <AlertDialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
-                <AlertDialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
+                <AlertDialogContent 
+                    onOpenAutoFocus={(e) => e.preventDefault()}
+                    onCloseAutoFocus={(e) => e.preventDefault()}
+                >
                   <AlertDialogHeader>
                     <AlertDialogTitle>Compartir Mapa</AlertDialogTitle>
                     <AlertDialogDescription>
@@ -1233,7 +1240,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
           baseLayerSettings={baseLayerSettings}
         />
         <AlertDialog open={isConfirmCloseProjectOpen} onOpenChange={setIsConfirmCloseProjectOpen}>
-            <AlertDialogContent>
+            <AlertDialogContent 
+                onOpenAutoFocus={(e) => e.preventDefault()}
+                onCloseAutoFocus={(e) => e.preventDefault()}
+            >
                 <AlertDialogHeader>
                     <AlertDialogTitle>Cerrar Proyecto</AlertDialogTitle>
                     <AlertDialogDescription>
