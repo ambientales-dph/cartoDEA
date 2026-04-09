@@ -1,3 +1,4 @@
+
 'use client';
 
 import React,
@@ -440,6 +441,14 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         }
     }, [stopDrawing, toast]);
 
+    const handleClearMarkedPoints = useCallback(() => {
+        if (profilePointsSourceRef.current) {
+            profilePointsSourceRef.current.clear();
+            setProfilePoints([]);
+            toast({ description: "Puntos marcados eliminados del mapa." });
+        }
+    }, [toast]);
+
     useEffect(() => {
         // Ensure analysis layer exists on mount
         if (mapRef.current && !analysisLayerRef.current) {
@@ -822,7 +831,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         const sumY = valuesY.reduce((a, b) => a + b, 0);
         const sumXY = valuesX.reduce((sum, x, i) => sum + x * valuesY[i], 0);
         const sumX2 = valuesX.reduce((sum, x) => sum + x * x, 0);
-        const sumY2 = valuesY.reduce((sum, y) => sum + y * y, 0);
+        const sumY2 = valuesX.reduce((sum, y) => sum + y * y, 0);
 
         const numerator = n * sumXY - sumX * sumY;
         const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
@@ -865,7 +874,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             const currentValue = prev[key];
             if (currentValue === 'auto') return prev; // Cannot step from 'auto'
             const change = direction === 'inc' ? 1 : -1;
-            return { ...prev, [key]: currentValue + change };
+            return { ...prev, [key]: (currentValue as number) + change };
         });
     };
 
@@ -889,7 +898,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     <Label className="text-xs">Max</Label>
                     <div className="flex items-center gap-1">
                         <Button {...maxDecHandlers} variant="ghost" size="icon" className="h-6 w-6"><Minus className="h-3 w-3" /></Button>
-                        <Input type="text" value={domain.max} onChange={(e) => handleYAxisDomainChange(axis, 'min', e.target.value)} className="h-7 w-12 text-xs bg-black/20 text-center" placeholder="auto" />
+                        <Input type="text" value={domain.max} onChange={(e) => handleYAxisDomainChange(axis, 'max', e.target.value)} className="h-7 w-12 text-xs bg-black/20 text-center" placeholder="auto" />
                         <Button {...maxIncHandlers} variant="ghost" size="icon" className="h-6 w-6"><Plus className="h-3 w-3" /></Button>
                     </div>
                 </div>
@@ -995,9 +1004,10 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             }, {}));
 
             profilePointsSourceRef.current.addFeature(pointFeature);
-            setProfilePoints(prev => [...prev, pointFeature]);
+            setProfilePoints(prev => [...prev, pointFeature as Feature<Point>]);
+            toast({ description: "Punto marcado en el mapa." });
         }
-    }, [mapRef]);
+    }, [mapRef, toast]);
 
     const onConvertProfilePointsToLayer = useCallback(() => {
         if (profilePoints.length === 0) {
@@ -1201,7 +1211,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             const newOlLayer = new VectorLayer({
                 source: newSource,
                 properties: { id: newLayerId, name: outputName, type: 'analysis' },
-                style: inputLayer.olLayer.getStyle(),
+                style: (inputLayer.olLayer as VectorLayer<any>).getStyle(),
             });
 
             onAddLayer({
@@ -1302,7 +1312,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             const newOlLayer = new VectorLayer({
                 source: newSource,
                 properties: { id: newLayerId, name: outputName, type: 'analysis' },
-                style: inputLayer.olLayer.getStyle(),
+                style: (inputLayer.olLayer as VectorLayer<any>).getStyle(),
             });
 
             onAddLayer({
@@ -1521,7 +1531,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         const newOlLayer = new VectorLayer({
             source: newSource,
             properties: { id: newLayerId, name: outputName, type: 'analysis' },
-            style: layersToUnion[0].olLayer.getStyle(),
+            style: (layersToUnion[0].olLayer as VectorLayer<any>).getStyle(),
         });
 
         onAddLayer({
@@ -1567,7 +1577,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             const newOlLayer = new VectorLayer({
                 source: newSource,
                 properties: { id: newLayerId, name: outputName, type: 'analysis' },
-                style: inputLayer.olLayer.getStyle(),
+                style: (inputLayer.olLayer as VectorLayer<any>).getStyle(),
             });
 
             onAddLayer({
@@ -1644,7 +1654,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
         try {
             const crossSectionFeatures = await generateCrossSections({
-                lineFeatures: inputSource.getFeatures(),
+                lineFeatures: inputSource.getFeatures() as Feature<OlLineString>[],
                 distance: crossSectionDistance,
                 length: crossSectionLength,
                 units: crossSectionUnits,
@@ -1716,7 +1726,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             const newOlLayer = new VectorLayer({
                 source: newSource,
                 properties: { id: newLayerId, name: outputName, type: 'analysis' },
-                style: inputLayer.olLayer.getStyle(),
+                style: (inputLayer.olLayer as VectorLayer<any>).getStyle(),
             });
 
             onAddLayer({
@@ -2535,9 +2545,14 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                     {profilePoints.length > 0 && (
-                                        <Button onClick={onConvertProfilePointsToLayer} variant="outline" size="sm" className="h-7 text-xs bg-primary/30 text-white border-primary/50">
-                                            <LayersIcon className="mr-2 h-3.5 w-3.5" />Crear Capa de Puntos ({profilePoints.length})
-                                        </Button>
+                                        <div className="flex gap-1">
+                                            <Button onClick={handleClearMarkedPoints} variant="outline" size="sm" className="h-7 text-xs bg-red-500/20 text-red-300 border-red-500/30">
+                                                <Eraser className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button onClick={onConvertProfilePointsToLayer} variant="outline" size="sm" className="h-7 text-xs bg-primary/30 text-white border-primary/50">
+                                                <LayersIcon className="mr-2 h-3.5 w-3.5" />Crear Capa ({profilePoints.length})
+                                            </Button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
