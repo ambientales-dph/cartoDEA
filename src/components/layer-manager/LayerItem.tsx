@@ -36,6 +36,7 @@ import { Eye, EyeOff, Settings2, ZoomIn, Table2, Trash2, Scissors, Percent, Grip
 import type { CategorizedSymbology, GeoTiffStyle, GraduatedSymbology, InteractionToolId, LabelOptions, MapLayer, VectorMapLayer } from '@/lib/types';
 import VectorLayer from 'ol/layer/Vector'; 
 import WebGLTileLayer from 'ol/layer/WebGLTile';
+import Feature from 'ol/Feature';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import StyleEditorDialog, { type StyleOptions } from './StyleEditorDialog';

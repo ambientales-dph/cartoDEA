@@ -1149,10 +1149,11 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               >
                 <ZoomIn className="h-4 w-4" />
               </Button>
-              <AlertDialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
+              <AlertDialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen} modal={false}>
                 <AlertDialogContent 
                     onOpenAutoFocus={(e) => e.preventDefault()}
                     onCloseAutoFocus={(e) => e.preventDefault()}
+                    onInteractOutside={(e) => e.preventDefault()}
                 >
                   <AlertDialogHeader>
                     <AlertDialogTitle>Compartir Mapa</AlertDialogTitle>
