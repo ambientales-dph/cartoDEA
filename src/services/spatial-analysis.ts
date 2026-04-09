@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Feature as TurfFeature, Polygon as TurfPolygon, MultiPolygon as TurfMultiPolygon, FeatureCollection as TurfFeatureCollection, Geometry as TurfGeometry, Point as TurfPoint, LineString as TurfLineString } from 'geojson';
@@ -79,6 +78,13 @@ export const DATASET_DEFINITIONS = {
         name: 'DSM (ALOS)',
         band: 'DSM',
         color: '#facc15',
+        unit: 'm'
+    },
+    'COPERNICUS_DEM': {
+        id: 'COPERNICUS/DEM/GLO30',
+        name: 'DEM (Copernicus GLO-30)',
+        band: 'DEM',
+        color: '#fbbf24',
         unit: 'm'
     },
     'JRC_WATER_OCCURRENCE': {

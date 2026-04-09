@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from 'react';
@@ -125,8 +124,8 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
             const geeParams: Omit<GeeTileLayerInput, 'aoi' | 'zoom'> = {
                 ...geeParamsBase,
                 bandCombination: selectedCombination,
-                minElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM') ? elevationRange[0] : undefined,
-                maxElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM') ? elevationRange[1] : undefined,
+                minElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM' || selectedCombination === 'COPERNICUS_DEM') ? elevationRange[0] : undefined,
+                maxElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM' || selectedCombination === 'COPERNICUS_DEM') ? elevationRange[1] : undefined,
             };
 
             const result = await getGeeTileLayer({ aoi, zoom, ...geeParams });
@@ -143,6 +142,7 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
                     case 'DYNAMIC_WORLD': layerName = 'Dynamic World Land Cover'; break;
                     case 'NASADEM_ELEVATION': layerName = `NASADEM Elevación (${elevationRange[0]}-${elevationRange[1]}m)`; break;
                     case 'ALOS_DSM': layerName = `ALOS DSM (${elevationRange[0]}-${elevationRange[1]}m)`; break;
+                    case 'COPERNICUS_DEM': layerName = `Copernicus DEM (${elevationRange[0]}-${elevationRange[1]}m)`; break;
                     default: layerName = 'Capa GEE';
                 }
                 onAddGeeLayer(result.tileUrl, layerName, geeParams);
@@ -210,8 +210,8 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
             bandCombination: selectedCombination,
             startDate: date?.from ? format(date.from, 'yyyy-MM-dd') : undefined,
             endDate: date?.to ? format(date.to, 'yyyy-MM-dd') : undefined,
-            minElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM') ? elevationRange[0] : undefined,
-            maxElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM') ? elevationRange[1] : undefined,
+            minElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM' || selectedCombination === 'COPERNICUS_DEM') ? elevationRange[0] : undefined,
+            maxElevation: (selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM' || selectedCombination === 'COPERNICUS_DEM') ? elevationRange[1] : undefined,
             tasseledCapComponent: tasseledCapComponent,
         });
         
@@ -234,7 +234,7 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
           toast({ description: "Asegúrese de estar autenticado.", variant: "destructive" });
           return;
       }
-      if (selectedCombination !== 'NASADEM_ELEVATION' && selectedCombination !== 'ALOS_DSM') return;
+      if (selectedCombination !== 'NASADEM_ELEVATION' && selectedCombination !== 'ALOS_DSM' && selectedCombination !== 'COPERNICUS_DEM') return;
 
       setIsCalculatingHistogram(true);
       setHistogramData(null);
@@ -247,7 +247,7 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
       try {
           const result = await getGeeHistogram({
               aoi: { minLon: extent4326[0], minLat: extent4326[1], maxLon: extent4326[2], maxLat: extent4326[3] },
-              bandCombination: selectedCombination,
+              bandCombination: selectedCombination as any,
           });
 
           if (result && result.histogram) {
@@ -293,8 +293,8 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
     );
   };
 
-  const isDateSelectionDisabled = ['JRC_WATER_OCCURRENCE', 'OPENLANDMAP_SOC', 'NASADEM_ELEVATION', 'ALOS_DSM'].includes(selectedCombination);
-  const showElevationControls = selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM';
+  const isDateSelectionDisabled = ['JRC_WATER_OCCURRENCE', 'OPENLANDMAP_SOC', 'NASADEM_ELEVATION', 'ALOS_DSM', 'COPERNICUS_DEM'].includes(selectedCombination);
+  const showElevationControls = selectedCombination === 'NASADEM_ELEVATION' || selectedCombination === 'ALOS_DSM' || selectedCombination === 'COPERNICUS_DEM';
   const showDynamicWorldLegend = selectedCombination === 'DYNAMIC_WORLD';
   const showVectorizeButton = selectedCombination === 'DYNAMIC_WORLD';
 
@@ -355,6 +355,10 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="ALOS_DSM" id="alos-combo" />
                 <Label htmlFor="alos-combo" className="text-xs font-normal">Modelo de Superficie (ALOS DSM)</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="COPERNICUS_DEM" id="copernicus-combo" />
+                <Label htmlFor="copernicus-combo" className="text-xs font-normal">Modelo de Elevación (Copernicus)</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="JRC_WATER_OCCURRENCE" id="jrc-combo" />
@@ -563,5 +567,3 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
 };
 
 export default GeeProcessingPanel;
- 
-    

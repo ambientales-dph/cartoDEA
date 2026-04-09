@@ -1,5 +1,3 @@
-
-
 'use server';
 /**
  * @fileOverview A flow for generating Google Earth Engine tile layers, vector data, and histograms.
@@ -87,7 +85,7 @@ export async function getValuesForPoints({
         ).rename('first');
     } else if (datasetId) {
         // Special handling for mosaic collections vs single images
-        if (datasetId === 'JAXA/ALOS/AW3D30/V3_2' || datasetId === 'COPERNICUS/S2_SR_HARMONIZED') {
+        if (datasetId === 'JAXA/ALOS/AW3D30/V3_2' || datasetId === 'COPERNICUS/S2_SR_HARMONIZED' || datasetId === 'COPERNICUS/DEM/GLO30') {
             image = ee.ImageCollection(datasetId).select(bandName).mosaic();
         } else {
             image = ee.Image(datasetId).select(bandName);
@@ -112,7 +110,7 @@ export async function getValuesForPoints({
         scale: 30, // Native resolution is appropriate here for DEMs
     });
 
-    // Promisify the evaluate call to use async/await
+    // Process the results from the single request
     const resultCollection = await new Promise<any>((resolve, reject) => {
         values.evaluate((result: any, error?: string) => {
             if (error) {
@@ -365,6 +363,9 @@ const getImageForProcessing = (input: GeeTileLayerInput | GeeGeoTiffDownloadInpu
         visParams = { min: minElevation ?? 0, max: maxElevation ?? 4000, palette: ELEVATION_PALETTE };
     } else if (bandCombination === 'ALOS_DSM') {
         finalImage = ee.ImageCollection('JAXA/ALOS/AW3D30/V3_2').select('DSM').mosaic();
+        visParams = { min: minElevation ?? 0, max: maxElevation ?? 4000, palette: ELEVATION_PALETTE };
+    } else if (bandCombination === 'COPERNICUS_DEM') {
+        finalImage = ee.ImageCollection('COPERNICUS/DEM/GLO30').select('DEM').mosaic();
         visParams = { min: minElevation ?? 0, max: maxElevation ?? 4000, palette: ELEVATION_PALETTE };
     } else { // JRC_WATER_OCCURRENCE or OPENLANDMAP_SOC
         finalImage = bandCombination === 'JRC_WATER_OCCURRENCE'

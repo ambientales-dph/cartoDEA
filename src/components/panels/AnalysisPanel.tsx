@@ -1,4 +1,3 @@
-
 'use client';
 
 import React,
@@ -218,7 +217,7 @@ const profilePointsStyle = new Style({
     }),
 });
 
-type DatasetId = 'NASADEM_ELEVATION' | 'ALOS_DSM' | 'JRC_WATER_OCCURRENCE';
+type DatasetId = 'NASADEM_ELEVATION' | 'ALOS_DSM' | 'COPERNICUS_DEM' | 'JRC_WATER_OCCURRENCE';
 
 interface ProfileDataSeries {
     datasetId: string; // Can be a DatasetId or a layer ID
@@ -357,7 +356,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [profileData, setProfileData] = useState<ProfileDataSeries[] | null>(null);
     const [activeProfileDrawTool, setActiveProfileDrawTool] = useState<'LineString' | 'FreehandLine' | null>(null);
     const [isGeneratingProfile, setIsGeneratingProfile] = useState(false);
-    const [selectedProfileDatasets, setSelectedProfileDatasets] = useState<string[]>(['NASADEM_ELEVATION']);
+    const [selectedProfileDatasets, setSelectedProfileDatasets] = useState<string[]>(['COPERNICUS_DEM']);
     const [profileLayerId, setProfileLayerId] = useState<string>('');
     const [yAxisDomainLeft, setYAxisDomainLeft] = useState<{ min: number | 'auto'; max: number | 'auto' }>({ min: 'auto', max: 'auto' });
     const [yAxisDomainRight, setYAxisDomainRight] = useState<{ min: number | 'auto'; max: number | 'auto' }>({ min: 'auto', max: 'auto' });
@@ -831,7 +830,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         const sumY = valuesY.reduce((a, b) => a + b, 0);
         const sumXY = valuesX.reduce((sum, x, i) => sum + x * valuesY[i], 0);
         const sumX2 = valuesX.reduce((sum, x) => sum + x * x, 0);
-        const sumY2 = valuesX.reduce((sum, y) => sum + y * y, 0);
+        const sumY2 = valuesY.reduce((sum, y) => sum + y * y, 0);
 
         const numerator = n * sumXY - sumX * sumY;
         const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
@@ -2578,7 +2577,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                 </div>
                                 <div>
                                     <Label htmlFor="clip-mask-layer" className="text-xs">Capa de Recorte (molde)</Label>
-                                    <Select value={clipMaskLayerId} onValueChange={setClipMaskLayerId}>
+                                    <Select value={clipMaskLayerId} onValueChange={setMaskLayerId}>
                                         <SelectTrigger id="clip-mask-layer" className="h-8 text-xs bg-black/20"><SelectValue placeholder="Seleccionar capa de polígonos..." /></SelectTrigger>
                                         <SelectContent className="bg-gray-700 text-white border-gray-600">
                                             {polygonLayers.map(l => <SelectItem key={l.id} value={l.id} className="text-xs">{l.name}</SelectItem>)}

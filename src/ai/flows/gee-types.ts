@@ -1,5 +1,3 @@
-
-
 /**
  * @fileOverview Types and schemas for the GEE flow.
  *
@@ -27,7 +25,7 @@ export type TasseledCapComponent = z.infer<typeof TasseledCapComponentSchema>;
 export const GeeTileLayerInputSchema = z.object({
   aoi: GeeAoiSchema.describe("The Area of Interest as a bounding box."),
   zoom: z.number().describe("The current zoom level of the map."),
-  bandCombination: z.enum(['URBAN_FALSE_COLOR', 'SWIR_FALSE_COLOR', 'BSI', 'NDVI', 'JRC_WATER_OCCURRENCE', 'OPENLANDMAP_SOC', 'DYNAMIC_WORLD', 'NASADEM_ELEVATION', 'ALOS_DSM', 'TASSELED_CAP', 'GOES_CLOUDTOP']).describe("The band combination or index to use for the layer."),
+  bandCombination: z.enum(['URBAN_FALSE_COLOR', 'SWIR_FALSE_COLOR', 'BSI', 'NDVI', 'JRC_WATER_OCCURRENCE', 'OPENLANDMAP_SOC', 'DYNAMIC_WORLD', 'NASADEM_ELEVATION', 'ALOS_DSM', 'COPERNICUS_DEM', 'TASSELED_CAP', 'GOES_CLOUDTOP']).describe("The band combination or index to use for the layer."),
   startDate: z.string().optional().describe("The start date for the image search in YYYY-MM-DD format."),
   endDate: z.string().optional().describe("The end date for the image search in YYYY-MM-DD format."),
   minElevation: z.number().optional().describe("The minimum elevation for the visualization range."),
@@ -79,7 +77,7 @@ export type GeeGeoTiffDownloadInput = z.infer<typeof GeeGeoTiffDownloadInputSche
 // New schemas for histogram generation
 export const GeeHistogramInputSchema = z.object({
     aoi: GeeAoiSchema.describe("The Area of Interest as a bounding box for the histogram calculation."),
-    bandCombination: z.enum(['NASADEM_ELEVATION', 'ALOS_DSM', 'JRC_WATER_OCCURRENCE']).describe("The elevation dataset to analyze."),
+    bandCombination: z.enum(['NASADEM_ELEVATION', 'ALOS_DSM', 'COPERNICUS_DEM', 'JRC_WATER_OCCURRENCE']).describe("The elevation dataset to analyze."),
 });
 export type GeeHistogramInput = z.infer<typeof GeeHistogramInputSchema>;
 
@@ -110,7 +108,7 @@ const TurfLineStringFeatureSchema = z.custom<TurfFeature<TurfLineString>>(
 // New schemas for profile generation
 export const GeeProfileInputSchema = z.object({
   line: TurfLineStringFeatureSchema.describe('A GeoJSON LineString feature for the profile.'),
-  dataset: z.enum(['NASADEM_ELEVATION', 'ALOS_DSM', 'JRC_WATER_OCCURRENCE']).describe('The elevation dataset to sample.'),
+  dataset: z.enum(['NASADEM_ELEVATION', 'ALOS_DSM', 'COPERNICUS_DEM', 'JRC_WATER_OCCURRENCE']).describe('The elevation dataset to sample.'),
 });
 export type GeeProfileInput = z.infer<typeof GeeProfileInputSchema>;
 
