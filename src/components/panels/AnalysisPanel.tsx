@@ -2577,7 +2577,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                 </div>
                                 <div>
                                     <Label htmlFor="clip-mask-layer" className="text-xs">Capa de Recorte (molde)</Label>
-                                    <Select value={clipMaskLayerId} onValueChange={setMaskLayerId}>
+                                    <Select value={clipMaskLayerId} onValueChange={setClipMaskLayerId}>
                                         <SelectTrigger id="clip-mask-layer" className="h-8 text-xs bg-black/20"><SelectValue placeholder="Seleccionar capa de polígonos..." /></SelectTrigger>
                                         <SelectContent className="bg-gray-700 text-white border-gray-600">
                                             {polygonLayers.map(l => <SelectItem key={l.id} value={l.id} className="text-xs">{l.name}</SelectItem>)}
