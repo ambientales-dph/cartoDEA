@@ -204,9 +204,10 @@ const SectionHeader: React.FC<{ icon: React.ElementType; title: string; }> = ({ 
     </div>
 );
 
+// --- ESTILO MODIFICADO: NARANJA, CONTINUA, 1PX ---
 const analysisLayerStyle = new Style({
-    stroke: new Stroke({ color: 'rgba(0, 255, 255, 1)', width: 2.5, lineDash: [8, 8] }),
-    fill: new Fill({ color: 'rgba(0, 255, 255, 0.2)' }),
+    stroke: new Stroke({ color: '#ff4500', width: 1 }),
+    fill: new Fill({ color: 'rgba(255, 69, 0, 0.1)' }),
 });
 
 const profilePointsStyle = new Style({
