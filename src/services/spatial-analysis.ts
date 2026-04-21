@@ -113,6 +113,7 @@ export const POPULATION_DATA: { partido: string; censo_2001: number | null; cens
   { partido: "Arrecifes", censo_2001: 27279, censo_2010: 29044, censo_2022: 32077 },
   { partido: "Avellaneda", censo_2001: 328980, censo_2010: 342677, censo_2022: 366117 },
   { partido: "Ayacucho", censo_2001: 19634, censo_2010: 20337, censo_2022: 21757 },
+  { partido: "Ayacucho", censo_2001: 19634, censo_2010: 20337, censo_2022: 21757 },
   { partido: "Azul", censo_2001: 63034, censo_2010: 65280, censo_2022: 75152 },
   { partido: "Bahía Blanca", censo_2001: 284776, censo_2010: 301572, censo_2022: 334505 },
   { partido: "Balcarce", censo_2001: 42040, censo_2010: 43823, censo_2022: 48516 },
@@ -247,9 +248,9 @@ export const POPULATION_DATA: { partido: string; censo_2001: number | null; cens
 
 export async function performBufferAnalysis({ features, distance, units }: { features: Feature<Geometry>[], distance: number, units: 'meters' | 'kilometers' | 'miles' }): Promise<Feature<OlPolygon>[]> {
   const format = new GeoJSON({ featureProjection: 'EPSG:3857' });
-  const featureCollection = format.writeFeaturesObject(features);
+  const featureCollectionObj = format.writeFeaturesObject(features);
   
-  const buffered = turfBuffer(featureCollection, distance, { units });
+  const buffered = turfBuffer(featureCollectionObj, distance, { units });
 
   // Use a different GeoJSON instance for reading back, as featureProjection is global to the instance
   const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
@@ -258,9 +259,9 @@ export async function performBufferAnalysis({ features, distance, units }: { fea
 
 export async function performConvexHull({ features }: { features: Feature<Geometry>[] }): Promise<Feature<OlPolygon>[]> {
     const format = new GeoJSON({ featureProjection: 'EPSG:3857' });
-    const featureCollection = format.writeFeaturesObject(features);
+    const featureCollectionObj = format.writeFeaturesObject(features);
     
-    const hull = convex(featureCollection as TurfFeatureCollection<TurfPoint>); // Turf expects points for convex hull
+    const hull = convex(featureCollectionObj as TurfFeatureCollection<TurfPoint>); // Turf expects points for convex hull
     if (!hull) return [];
 
     const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
@@ -269,9 +270,9 @@ export async function performConvexHull({ features }: { features: Feature<Geomet
 
 export async function performConcaveHull({ features, concavity }: { features: Feature<Geometry>[], concavity: number }): Promise<Feature<OlPolygon | TurfMultiPolygon>[]> {
     const format = new GeoJSON({ featureProjection: 'EPSG:3857' });
-    const featureCollection = format.writeFeaturesObject(features);
+    const featureCollectionObj = format.writeFeaturesObject(features);
 
-    const hull = concave(featureCollection as TurfFeatureCollection<TurfPoint>, { maxEdge: concavity, units: 'kilometers' });
+    const hull = concave(featureCollectionObj as TurfFeatureCollection<TurfPoint>, { maxEdge: concavity, units: 'kilometers' });
     if (!hull) return [];
 
     const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
@@ -281,17 +282,17 @@ export async function performConcaveHull({ features, concavity }: { features: Fe
 
 export async function calculateOptimalConcavity({ features }: { features: Feature<Geometry>[] }): Promise<{ suggestedConcavity: number, meanDistance: number, stdDev: number }> {
     const format = new GeoJSON({ featureProjection: 'EPSG:3857' });
-    const featureCollection = format.writeFeaturesObject(features) as TurfFeatureCollection<TurfPoint>;
+    const fc = format.writeFeaturesObject(features) as TurfFeatureCollection<TurfPoint>;
     
-    if (featureCollection.features.length < 3) {
+    if (fc.features.length < 3) {
         throw new Error("Se necesitan al menos 3 puntos para calcular la concavidad.");
     }
     
     const distances: number[] = [];
-    for (let i = 0; i < featureCollection.features.length; i++) {
-        const others = featureCollection.features.slice(0, i).concat(featureCollection.features.slice(i + 1));
+    for (let i = 0; i < fc.features.length; i++) {
+        const others = fc.features.slice(0, i).concat(fc.features.slice(i + 1));
         if (others.length > 0) {
-            const nearest = turfNearestPoint(featureCollection.features[i], featureCollection(others));
+            const nearest = turfNearestPoint(fc.features[i], featureCollection(others));
             distances.push(nearest.properties.distanceToPoint);
         }
     }
