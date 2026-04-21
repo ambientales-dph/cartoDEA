@@ -85,7 +85,7 @@ export async function getValuesForPoints({
         ).rename('first');
     } else if (datasetId) {
         // Special handling for mosaic collections vs single images
-        if (datasetId === 'JAXA/ALOS/AW3D30/V3_2' || datasetId === 'COPERNICUS/S2_SR_HARMONIZED' || datasetId === 'COPERNICUS/DEM/GLO30') {
+        if (datasetId === 'JAXA/ALOS/AW3D30/V3_2' || datasetId === 'COPERNICUS/S2_SR_HARMONIZED' || datasetId === 'COPERNICUS/DEM/GLO30' || datasetId === 'NASA/SMAP/SPL3SMP_E/006') {
             image = ee.ImageCollection(datasetId).select(bandName).mosaic();
         } else {
             image = ee.Image(datasetId).select(bandName);
@@ -358,6 +358,20 @@ const getImageForProcessing = (input: GeeTileLayerInput | GeeGeoTiffDownloadInpu
         }
         finalImage = ee.Image(dwCollection.mode()).select('label');
         visParams = { min: 0, max: 8, palette: DYNAMIC_WORLD_PALETTE };
+    } else if (bandCombination === 'SMAP_SOIL_MOISTURE') {
+        let smapCollection = ee.ImageCollection('NASA/SMAP/SPL3SMP_E/006');
+        if (geometry) {
+            smapCollection = smapCollection.filterBounds(geometry);
+        }
+        const startDate = 'startDate' in input ? input.startDate : undefined;
+        const endDate = 'endDate' in input ? input.endDate : undefined;
+        if (startDate && endDate) {
+            smapCollection = smapCollection.filterDate(startDate, endDate);
+        } else {
+            smapCollection = smapCollection.filterDate(ee.Date(Date.now()).advance(-3, 'month'), ee.Date(Date.now()));
+        }
+        finalImage = smapCollection.mean().select('soil_moisture_am');
+        visParams = { min: 0, max: 0.5, palette: ['#ff0000', '#ffff00', '#0000ff'] };
     } else if (bandCombination === 'NASADEM_ELEVATION') {
         finalImage = ee.Image('NASA/NASADEM_HGT/001').select('elevation');
         visParams = { min: minElevation ?? 0, max: maxElevation ?? 4000, palette: ELEVATION_PALETTE };

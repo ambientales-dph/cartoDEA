@@ -93,6 +93,13 @@ export const DATASET_DEFINITIONS = {
         band: 'occurrence',
         color: '#38bdf8',
         unit: '%'
+    },
+    'SMAP_SOIL_MOISTURE': {
+        id: 'NASA/SMAP/SPL3SMP_E/006',
+        name: 'Humedad del Suelo (SMAP)',
+        band: 'soil_moisture_am',
+        color: '#3b82f6',
+        unit: 'm³/m³'
     }
 };
 

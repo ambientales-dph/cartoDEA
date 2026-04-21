@@ -140,6 +140,7 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
                     case 'JRC_WATER_OCCURRENCE': layerName = 'Agua Superficial (JRC)'; break;
                     case 'OPENLANDMAP_SOC': layerName = 'Carbono Org. del Suelo (OpenLandMap)'; break;
                     case 'DYNAMIC_WORLD': layerName = 'Dynamic World Land Cover'; break;
+                    case 'SMAP_SOIL_MOISTURE': layerName = 'Humedad del Suelo (SMAP)'; break;
                     case 'NASADEM_ELEVATION': layerName = `NASADEM Elevación (${elevationRange[0]}-${elevationRange[1]}m)`; break;
                     case 'ALOS_DSM': layerName = `ALOS DSM (${elevationRange[0]}-${elevationRange[1]}m)`; break;
                     case 'COPERNICUS_DEM': layerName = `Copernicus DEM (${elevationRange[0]}-${elevationRange[1]}m)`; break;
@@ -347,6 +348,10 @@ const GeeProcessingPanel: React.FC<GeeProcessingPanelProps> = ({
                <div className="flex items-center space-x-2">
                 <RadioGroupItem value="DYNAMIC_WORLD" id="dw-combo" />
                 <Label htmlFor="dw-combo" className="text-xs font-normal">Cobertura del Suelo (Dynamic World)</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="SMAP_SOIL_MOISTURE" id="smap-combo" />
+                <Label htmlFor="smap-combo" className="text-xs font-normal">Humedad del Suelo (NASA SMAP)</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="NASADEM_ELEVATION" id="nasadem-combo" />
