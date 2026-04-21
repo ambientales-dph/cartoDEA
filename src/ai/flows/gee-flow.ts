@@ -371,7 +371,7 @@ const getImageForProcessing = (input: GeeTileLayerInput | GeeGeoTiffDownloadInpu
             smapCollection = smapCollection.filterDate(ee.Date(Date.now()).advance(-3, 'month'), ee.Date(Date.now()));
         }
         finalImage = smapCollection.mean().select('soil_moisture_am');
-        visParams = { min: 0, max: 0.5, palette: ['#ff0000', '#ffff00', '#0000ff'] };
+        visParams = { min: 0, max: 0.5, palette: ['#ff0000', '#00ff00', '#0000ff'] };
     } else if (bandCombination === 'NASADEM_ELEVATION') {
         finalImage = ee.Image('NASA/NASADEM_HGT/001').select('elevation');
         visParams = { min: minElevation ?? 0, max: maxElevation ?? 4000, palette: ELEVATION_PALETTE };
