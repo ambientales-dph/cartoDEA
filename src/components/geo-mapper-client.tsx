@@ -245,7 +245,7 @@ const availableBaseLayersForSelect: BaseLayerOptionForSelect[] =
 
 const PANEL_WIDTH = 350;
 const PANEL_PADDING = 8;
-const MAX_INLINE_LAYER_SIZE_KB = 50; // Max size for inlined GeoJSON data in shared maps
+const MAX_INLINE_LAYER_SIZE_KB = 50;
 
 const panelToggleConfigs = [
   { id: 'wfsLibrary', IconComponent: Library, name: 'Biblioteca de Servidores' },
@@ -281,10 +281,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [isConfirmCloseProjectOpen, setIsConfirmCloseProjectOpen] = useState(false);
   const [mapSubject, setMapSubject] = useState('');
   const [projectLayerIds, setProjectLayerIds] = useState<string[]>([]);
-
-  const layerManagerHookRef = useRef<ReturnType<typeof useLayerManager> | null>(
-    null
-  );
 
   const [isClientMounted, setIsClientMounted] = useState(false);
 
@@ -327,11 +323,13 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [activeBaseLayerId, setActiveBaseLayerId] = useState<string>(
     initialMapState?.baseLayerId || BASE_LAYER_DEFINITIONS[1].id
   );
-  const [baseLayerSettings, setBaseLayerSettings] = useState<BaseLayerSettings>({
-    opacity: 1,
-    brightness: 100,
-    contrast: 100,
-  });
+  const [baseLayerSettings, setBaseLayerSettings] = useState<BaseLayerSettings>(
+    initialMapState?.baseLayerSettings || {
+        opacity: 1,
+        brightness: 100,
+        contrast: 100,
+    }
+  );
 
   const handleBaseLayerSettingsChange = useCallback(
     (newSettings: Partial<BaseLayerSettings>) => {
@@ -416,8 +414,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     updateInspectedFeatureData: featureInspectionHook.updateInspectedFeatureData,
   });
 
-  layerManagerHookRef.current = layerManagerHook;
-
   const { handleFetchGeoServerLayers, isFetching: isFetchingDeasLayers } =
     useGeoServerLayers({
       onLayerStateUpdate: updateDiscoveredLayerState,
@@ -499,7 +495,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       .then((discovered) => {
         if (discovered) {
           setDiscoveredGeoServerLayers(discovered);
-          // Auto-load the "Cuencas_dph" layer
           const basinsLayer = discovered.find(l => l.name.toLowerCase() === 'dea:cuencas_dph');
           if (basinsLayer) {
               layerManagerHook.handleAddHybridLayer(
@@ -515,8 +510,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       .catch((error) => {
         console.error('Fallo al cargar las capas iniciales de DEAS:', error);
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMapReady, initialMapState]);
+  }, [isMapReady, initialMapState, handleFetchGeoServerLayers, layerManagerHook, toast]);
 
   const handleReloadDeasLayers = useCallback(async () => {
     toast({ description: 'Recargando capas desde el servidor de DEAS...' });
@@ -761,19 +755,19 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         zoom: currentView.getZoom() || 2,
       },
       baseLayerId: activeBaseLayerId,
+      baseLayerSettings: baseLayerSettings,
       layers: layerManagerHook.layers.flatMap((item): SerializableMapLayer[] => {
         const mapItemToSerializable = (l: MapLayer): SerializableMapLayer | null => {
           const olLayer = l.olLayer;
           const geeParams = olLayer.get('geeParams');
 
-          // Build object carefully to avoid 'undefined' which Firestore rejects
           const serialized: any = {
             name: l.name,
             opacity: l.opacity,
             visible: l.visible,
           };
 
-          // Only include optional symbology if they are set
+          if (l.simpleStyle) serialized.simpleStyle = l.simpleStyle;
           if (l.graduatedSymbology) serialized.graduatedSymbology = l.graduatedSymbology;
           if (l.categorizedSymbology) serialized.categorizedSymbology = l.categorizedSymbology;
           if (l.geoTiffStyle) serialized.geoTiffStyle = l.geoTiffStyle;
@@ -857,7 +851,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         variant: 'destructive',
       });
     }
-  }, [mapRef, firestore, mapSubject, activeBaseLayerId, layerManagerHook.layers, toast]);
+  }, [mapRef, firestore, mapSubject, activeBaseLayerId, baseLayerSettings, layerManagerHook.layers, toast]);
 
   useEffect(() => {
     const mapEl = mapElementRef.current;
@@ -894,7 +888,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     if (removeLayers && projectLayerIds.length > 0) {
       layerManagerHook.removeLayers(projectLayerIds);
       toast({ description: `Capas del proyecto eliminadas.` });
-      // Reset view after removing layers
       if (mapRef.current) {
         mapRef.current.getView().animate({
           center: transform([-60.0, -36.5], 'EPSG:4326', 'EPSG:3857'),
@@ -909,7 +902,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       trelloPopupRef.current.close();
     }
     trelloPopupRef.current = null;
-    setIsConfirmCloseProjectOpen(false); // Close confirmation dialog
+    setIsConfirmCloseProjectOpen(false);
   }, [projectLayerIds, layerManagerHook, mapRef, toast]);
 
 
@@ -917,7 +910,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     if (projectLayerIds.length > 0) {
         setIsConfirmCloseProjectOpen(true);
     } else {
-        // If there are no project layers, just close the notification directly
         closeAndResetProject(false);
     }
   }, [projectLayerIds, closeAndResetProject]);
@@ -941,14 +933,12 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   );
 
   useEffect(() => {
-    if (!initialMapState || !isMapReady || !mapRef.current || !layerManagerHookRef.current)
+    if (!initialMapState || !isMapReady || !mapRef.current)
       return;
 
     const loadSharedMap = async () => {
       toast({ description: `Cargando mapa: ${initialMapState.subject}` });
-      const { handleAddHybridLayer, addGeeLayerToMap, addLayer } =
-        layerManagerHookRef.current!;
-      const map = mapRef.current!;
+      const { handleAddHybridLayer, addGeeLayerToMap, addLayer } = layerManagerHook;
 
       for (const layerState of initialMapState.layers) {
         try {
@@ -985,10 +975,11 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                   olLayer,
                   visible: layerState.visible,
                   opacity: layerState.opacity,
-                  type: 'vector'
+                  type: 'vector',
+                  simpleStyle: layerState.simpleStyle,
+                  graduatedSymbology: layerState.graduatedSymbology,
+                  categorizedSymbology: layerState.categorizedSymbology,
               });
-          } else if (layerState.type === 'local-placeholder') {
-            console.log(`Skipping large local layer: ${layerState.name}`);
           }
         } catch (e) {
           console.error('Error loading shared layer', layerState, e);
@@ -997,12 +988,11 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     };
 
     loadSharedMap();
-  }, [initialMapState, isMapReady, mapRef, toast]);
+  }, [initialMapState, isMapReady, mapRef, layerManagerHook, toast]);
 
 
   const handleRecalculateTrajectoryAttributes = (layerId: string) => {
     layerManagerHook.recalculateTrajectoryAttributes(layerId);
-    // After recalculating, we need to refresh the data in the attributes panel
     const layer = layerManagerHook.layers.flatMap(l => 'layers' in l ? l.layers : [l]).find(l => l.id === layerId) as VectorMapLayer | undefined;
     if (layer) {
       layerManagerHook.handleShowLayerTable(layer.id);
@@ -1010,13 +1000,11 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   };
 
  const handleProjectCardSelection = useCallback(async (projectCode: string) => {
-    // 1. Clean up layers from the previous project, if any.
     if (projectLayerIds.length > 0) {
       layerManagerHook.removeLayers(projectLayerIds);
     }
-    setProjectLayerIds([]); // Clear the stored IDs immediately
+    setProjectLayerIds([]);
 
-    // 2. Find layers for the new project.
     const layersToAdd = discoveredGeoServerLayers.filter(layer => {
       const parts = layer.name.split(':');
       if (parts.length < 2) return false;
@@ -1024,7 +1012,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       const layerNameOnly = parts[1].toLowerCase();
       const codeToSearch = projectCode.toLowerCase();
       
-      // Match if the layer name contains the project code, surrounded by non-alphanumeric characters or start/end of string.
       const regex = new RegExp(`(^|[^a-z0-9])${codeToSearch}([^a-z0-9]|$)`);
       return regex.test(layerNameOnly);
     });
@@ -1035,7 +1022,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         let combinedExtent: Extent | null = null;
         const addedLayerIds: string[] = [];
         
-        // 3. Add new layers and calculate combined extent.
         for (const layer of layersToAdd) {
             const addedLayer = await handleDeasAddLayer(layer);
             if (addedLayer) {
@@ -1056,10 +1042,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             }
         }
         
-        // 4. Store the new project's layer IDs.
         setProjectLayerIds(addedLayerIds);
 
-        // 5. Zoom to the combined extent.
         if (combinedExtent) {
             setTimeout(() => {
                 zoomToBoundingBox(combinedExtent as [number, number, number, number]);

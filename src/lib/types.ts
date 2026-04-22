@@ -53,6 +53,7 @@ export interface MapLayer {
   opacity: number;
   type: 'wms' | 'wfs' | 'vector' | 'osm' | 'drawing' | 'sentinel' | 'landsat' | 'gee' | 'geotiff' | 'analysis';
   isDeas?: boolean;
+  simpleStyle?: StyleOptions; // Persistent simple style state
   graduatedSymbology?: GraduatedSymbology;
   categorizedSymbology?: CategorizedSymbology;
   geoTiffStyle?: GeoTiffStyle;
@@ -216,6 +217,7 @@ export interface SerializableMapLayer {
     } | null;
     data?: string | null; // For inlined GeoJSON data
     // Symbology persistence
+    simpleStyle?: StyleOptions;
     graduatedSymbology?: GraduatedSymbology;
     categorizedSymbology?: CategorizedSymbology;
     geoTiffStyle?: GeoTiffStyle;
@@ -229,4 +231,5 @@ export interface MapState {
         zoom: number;
     };
     baseLayerId: string;
+    baseLayerSettings?: BaseLayerSettings; // New: capture base layer effects
 }

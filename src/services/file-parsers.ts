@@ -1,5 +1,3 @@
-
-
 import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
 import GeoJSON from 'ol/format/GeoJSON';
@@ -7,7 +5,7 @@ import KML from 'ol/format/KML';
 import * as JSZip from 'jszip';
 import shp from 'shpjs';
 import { nanoid } from 'nanoid';
-import type { MapLayer } from '@/lib/types';
+import type { MapLayer, StyleOptions } from '@/lib/types';
 import type { useToast } from '@/hooks/use-toast';
 import type Feature from 'ol/Feature';
 import WebGLTileLayer from 'ol/layer/WebGLTile';
@@ -35,20 +33,19 @@ const getBaseName = (filename: string): string => {
 // --- Style rotation for new layers ---
 let styleCounter = 0;
 const RANDOM_STYLES = [
-    { stroke: '#0077b6', fill: 'rgba(0, 119, 182, 0.7)' },   // Blue
-    { stroke: '#e63946', fill: 'rgba(230, 57, 70, 0.7)' },    // Red
-    { stroke: '#2a9d8f', fill: 'rgba(42, 157, 143, 0.7)' },   // Green
-    { stroke: '#f4a261', fill: 'rgba(244, 162, 97, 0.7)' },   // Orange
-    { stroke: '#8338ec', fill: 'rgba(131, 56, 236, 0.7)' },   // Violet
-    { stroke: '#ffbe0b', fill: 'rgba(255, 190, 11, 0.7)' },   // Yellow
-    { stroke: '#fb5607', fill: 'rgba(251, 86, 7, 0.7)' },     // Dark Orange
-    { stroke: '#00ffff', fill: 'rgba(0, 255, 255, 0.7)' },     // Cyan
-    { stroke: '#ff00ff', fill: 'rgba(255, 0, 255, 0.7)' },     // Magenta
-    { stroke: '#3a86ff', fill: 'rgba(58, 134, 255, 0.7)' },   // Light Blue
+    { stroke: '#0077b6', fill: 'rgba(0, 119, 182, 0.7)', name: 'azul' },
+    { stroke: '#e63946', fill: 'rgba(230, 57, 70, 0.7)', name: 'rojo' },
+    { stroke: '#2a9d8f', fill: 'rgba(42, 157, 143, 0.7)', name: 'verde' },
+    { stroke: '#f4a261', fill: 'rgba(244, 162, 97, 0.7)', name: 'naranja' },
+    { stroke: '#8338ec', fill: 'rgba(131, 56, 236, 0.7)', name: 'violeta' },
+    { stroke: '#ffbe0b', fill: 'rgba(255, 190, 11, 0.7)', name: 'amarillo' },
+    { stroke: '#fb5607', fill: 'rgba(251, 86, 7, 0.7)', name: 'naranja' },
+    { stroke: '#00ffff', fill: 'rgba(0, 255, 255, 0.7)', name: 'cian' },
+    { stroke: '#ff00ff', fill: 'rgba(255, 0, 255, 0.7)', name: 'magenta' },
+    { stroke: '#3a86ff', fill: 'rgba(58, 134, 255, 0.7)', name: 'azul' },
 ];
 
 const createVectorLayer = (features: Feature[], layerName: string): MapLayer => {
-    // Ensure all features have a unique ID for selection to work correctly.
     features.forEach(feature => {
         if (!feature.getId()) {
             feature.setId(nanoid());
@@ -58,13 +55,20 @@ const createVectorLayer = (features: Feature[], layerName: string): MapLayer => 
     const source = new VectorSource({ features });
     const layerId = `${layerName}-${nanoid()}`;
 
-    // Get the next style from the palette
     const styleDef = RANDOM_STYLES[styleCounter % RANDOM_STYLES.length];
-    styleCounter++; // Increment for the next layer
+    styleCounter++;
+
+    const simpleStyle: StyleOptions = {
+        strokeColor: styleDef.name,
+        fillColor: styleDef.name,
+        lineWidth: 2,
+        lineStyle: 'solid',
+        pointSize: 5
+    };
 
     const olLayer = new VectorLayer({
         source,
-        properties: { id: layerId, name: layerName, type: 'vector' },
+        properties: { id: layerId, name: layerName, type: 'vector', originalStyleOptions: simpleStyle },
         style: new Style({
             stroke: new Stroke({
                 color: styleDef.stroke,
@@ -95,6 +99,7 @@ const createVectorLayer = (features: Feature[], layerName: string): MapLayer => 
         visible: true,
         opacity: 0.7,
         type: 'vector',
+        simpleStyle: simpleStyle
     };
 };
 
@@ -124,12 +129,10 @@ export const handleFileUpload = async ({
 
     const geojsonFormat = new GeoJSON({ 
         featureProjection: 'EPSG:3857',
-        // Let OpenLayers detect the CRS from the GeoJSON file itself if present
         dataProjection: undefined 
     });
     const kmlFormat = new KML({ extractStyles: true, showPointNames: true });
 
-    // This function processes a single file content and adds it to the map
     const processAndAddLayer = async (content: string | ArrayBuffer, file: File, layerNameOverride?: string) => {
         const fileExtension = getFileExtension(file.name);
         const nameForLayer = layerNameOverride || getBaseName(file.name);
@@ -145,12 +148,11 @@ export const handleFileUpload = async ({
                             blob: blob,
                         }],
                         normalize: false,
-                        // This tells the renderer to treat pixels with value 0 as transparent
                         nodata: 0,
                     });
                     onAddLayer(createGeoTiffLayer(source, nameForLayer));
                     toast({ description: `Capa GeoTIFF "${nameForLayer}" cargada.` });
-                    return; // Exit after successful GeoTIFF processing
+                    return;
                 }
                 case 'geojson':
                 case 'json':
@@ -165,7 +167,6 @@ export const handleFileUpload = async ({
                     try {
                         geojsonData = await shp(content as ArrayBuffer);
                     } catch (shpError) {
-                        // Fallback for KMZ files that are not shapefile zips
                         if (fileExtension === 'kmz') {
                             try {
                                 const zip = await JSZip.loadAsync(content as ArrayBuffer);
@@ -173,19 +174,17 @@ export const handleFileUpload = async ({
                                 if (!kmlFile) throw new Error('No se encontró un archivo .kml dentro del .kmz.');
                                 const kmlContent = await kmlFile.async('string');
                                 features = kmlFormat.readFeatures(kmlContent, { dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
-                                // End of KMZ fallback logic, skip the rest of the switch case
                                 if (features && features.length > 0) {
                                     onAddLayer(createVectorLayer(features, nameForLayer));
                                     toast({ description: `Capa "${nameForLayer}" cargada con ${features.length} entidades.` });
                                 } else {
                                     toast({ description: `No se encontraron entidades en "${nameForLayer}".` });
                                 }
-                                return; // Exit after successful KMZ processing
+                                return;
                             } catch (kmzError) {
                                 throw new Error(`No se pudo procesar el archivo ${fileExtension} como Shapefile ni como KMZ.`);
                             }
                         }
-                        // If not a KMZ or if KMZ fallback fails, rethrow the original shpError
                         throw shpError;
                     }
                     
@@ -211,23 +210,19 @@ export const handleFileUpload = async ({
         }
     };
     
-    // --- Main Logic ---
     let files = selectedFile ? [selectedFile] : Array.from(selectedMultipleFiles || []);
     if (files.length === 0) return;
 
-    // --- Shapefile bundling logic ---
     const shapefileGroups: { [basename: string]: File[] } = {};
     const otherFiles: File[] = [];
     const shpBasenames = new Set<string>();
 
-    // First, identify all potential shapefile groups by finding .shp files
     for (const file of files) {
         if (getFileExtension(file.name) === 'shp') {
             shpBasenames.add(getBaseName(file.name));
         }
     }
 
-    // Now, segregate all files into their respective shapefile groups or as "other" files
     for (const file of files) {
         const basename = getBaseName(file.name);
         const fileExtension = getFileExtension(file.name);
@@ -243,15 +238,13 @@ export const handleFileUpload = async ({
         }
     }
 
-    // Process each identified shapefile group
     for (const basename in shapefileGroups) {
         const groupFiles = shapefileGroups[basename];
         const fileNames = groupFiles.map(f => f.name);
 
-        // Check for required files (.shp is guaranteed, check .dbf, .shx)
         if (!fileNames.includes(`${basename}.dbf`) || !fileNames.includes(`${basename}.shx`)) {
             toast({ description: `Faltan archivos para el Shapefile "${basename}". Se requieren .shp, .dbf y .shx.`, variant: 'destructive' });
-            continue; // Skip this group
+            continue;
         }
 
         const zip = new JSZip();
@@ -270,7 +263,6 @@ export const handleFileUpload = async ({
         }
     }
 
-    // --- Process remaining files ---
     for (const file of otherFiles) {
         const reader = new FileReader();
         reader.onload = async (e) => {

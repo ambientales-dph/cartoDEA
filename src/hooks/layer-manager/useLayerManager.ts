@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
@@ -730,7 +728,7 @@ export const useLayerManager = ({
 
     setLayers(prev => prev.map(l => {
       if ('layers' in l) return l; // It's a group, don't modify it directly
-      return l.id === layerId ? { ...l, graduatedSymbology: undefined, categorizedSymbology: undefined } : l
+      return l.id === layerId ? { ...l, simpleStyle: styleOptions, graduatedSymbology: undefined, categorizedSymbology: undefined } : l
     }));
     setTimeout(() => toast({ description: `Estilo de la capa "${layer.name}" actualizado.` }), 0);
 
@@ -1575,7 +1573,7 @@ const groupLayers = useCallback((layerIds: string[], groupName: string) => {
     lastRemovedLayers,
     reorderLayers,
     toggleLayerVisibility,
-    toggleGroupVisibility, // Export the new function
+    toggleGroupVisibility,
     toggleWmsStyle,
     setLayerOpacity,
     changeLayerStyle,
@@ -1600,7 +1598,7 @@ const groupLayers = useCallback((layerIds: string[], groupName: string) => {
     isWfsLoading,
     updateFeatureAttribute,
     addFieldToLayer,
-    recalculateTrajectoryAttributes, // Export the new function
+    recalculateTrajectoryAttributes,
     groupLayers,
     ungroupLayer,
     toggleGroupExpanded,
@@ -1610,19 +1608,3 @@ const groupLayers = useCallback((layerIds: string[], groupName: string) => {
     setGroupPlaySpeed,
   };
 };
-
-    
-
-    
-
-
-
-
-    
-
-
-
-
-    
-
-
