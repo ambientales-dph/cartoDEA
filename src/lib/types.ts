@@ -215,6 +215,10 @@ export interface SerializableMapLayer {
         tileUrl: string | null;
     } | null;
     data?: string | null; // For inlined GeoJSON data
+    // Symbology persistence
+    graduatedSymbology?: GraduatedSymbology;
+    categorizedSymbology?: CategorizedSymbology;
+    geoTiffStyle?: GeoTiffStyle;
 }
 
 export interface MapState {

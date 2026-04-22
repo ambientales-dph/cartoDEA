@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -12,7 +13,7 @@ import { fromLonLat } from 'ol/proj';
 import { defaults as defaultControls } from 'ol/control';
 import GeoJSON from 'ol/format/GeoJSON';
 import { bbox as bboxStrategy } from 'ol/loadingstrategy';
-import type { MapState, SerializableMapLayer } from '@/lib/types';
+import type { MapState, SerializableMapLayer, GraduatedSymbology, CategorizedSymbology, StyleOptions } from '@/lib/types';
 import { BASE_LAYER_DEFINITIONS } from '../map-view';
 import { Style, Fill, Stroke, Circle as CircleStyle } from 'ol/style';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,7 +22,6 @@ import { Label } from '@/components/ui/label';
 import { EyeOff, Layers as LayersIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { nanoid } from 'nanoid';
-
 
 interface SharedMapClientProps {
   mapState: MapState;
@@ -33,6 +33,67 @@ interface UILayerState extends SerializableMapLayer {
   olLayer?: TileLayer<any> | VectorLayer<any>;
 }
 
+// Color map for style interpretation
+const colorMap: { [key: string]: string } = {
+  rojo: '#e63946',
+  verde: '#2a9d8f',
+  azul: '#0077b6',
+  amarillo: '#ffbe0b',
+  naranja: '#f4a261',
+  violeta: '#8338ec',
+  negro: '#000000',
+  blanco: '#ffffff',
+  gris: '#adb5bd',
+  cian: '#00ffff',
+  magenta: '#ff00ff',
+  transparent: 'rgba(0,0,0,0)',
+};
+
+const isValidHex = (color: string) => /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
+
+const createSharedStyleFunction = (
+  graduatedSymbology: GraduatedSymbology | undefined,
+  categorizedSymbology: CategorizedSymbology | undefined
+) => {
+  return (feature: any) => {
+    let fillColor = 'rgba(51, 153, 204, 0.2)';
+    let strokeColor = '#3399CC';
+    let strokeWidth = 2;
+
+    if (graduatedSymbology) {
+        const value = feature.get(graduatedSymbology.field);
+        fillColor = 'rgba(128,128,128,0.5)';
+        if (typeof value === 'number') {
+            fillColor = graduatedSymbology.colors[graduatedSymbology.colors.length - 1];
+            for (let i = 0; i < graduatedSymbology.breaks.length; i++) {
+                if (value <= graduatedSymbology.breaks[i]) {
+                    fillColor = graduatedSymbology.colors[i];
+                    break;
+                }
+            }
+        }
+        strokeColor = colorMap[graduatedSymbology.strokeColor] || (isValidHex(graduatedSymbology.strokeColor) ? graduatedSymbology.strokeColor : 'rgba(0,0,0,0.5)');
+        strokeWidth = graduatedSymbology.strokeWidth ?? 1;
+    } else if (categorizedSymbology) {
+        const value = feature.get(categorizedSymbology.field);
+        const category = categorizedSymbology.categories.find(c => c.value === value);
+        fillColor = category ? category.color : 'rgba(128,128,128,0.5)';
+        strokeColor = colorMap[categorizedSymbology.strokeColor] || (isValidHex(categorizedSymbology.strokeColor) ? categorizedSymbology.strokeColor : 'rgba(0,0,0,0.5)');
+        strokeWidth = categorizedSymbology.strokeWidth ?? 1;
+    }
+
+    return new Style({
+        fill: new Fill({ color: fillColor }),
+        stroke: new Stroke({ color: strokeColor, width: strokeWidth }),
+        image: new CircleStyle({
+            radius: 5,
+            fill: new Fill({ color: fillColor }),
+            stroke: new Stroke({ color: strokeColor, width: 1 }),
+        }),
+    });
+  };
+};
+
 const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
   const mapElementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -40,7 +101,7 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
 
   useEffect(() => {
     if (!mapElementRef.current || mapRef.current) {
-      return; // Initialize map only once
+      return;
     }
 
     const baseLayerDef = BASE_LAYER_DEFINITIONS.find(def => def.id === mapState.baseLayerId) || BASE_LAYER_DEFINITIONS[1];
@@ -49,10 +110,11 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
     
     const allLayersForUI: UILayerState[] = [];
 
-    // Process operational layers from mapState
     mapState.layers.forEach((layerData, index) => {
         const uiId = `layer-${index}`;
         let olLayer: TileLayer<any> | VectorLayer<any> | null = null;
+
+        const sharedStyle = createSharedStyleFunction(layerData.graduatedSymbology, layerData.categorizedSymbology);
 
         if (layerData.type === 'wms' && layerData.url && layerData.layerName) {
             olLayer = new TileLayer({
@@ -73,15 +135,7 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
                     url: (extent) => `/api/geoserver-proxy?url=${encodeURIComponent(`${layerData.url}/wfs?service=WFS&version=1.1.0&request=GetFeature&typename=${layerData.layerName}&outputFormat=application/json&srsname=EPSG:3857&bbox=${extent.join(',')},EPSG:3857`)}`,
                     strategy: bboxStrategy,
                 }),
-                style: new Style({
-                    stroke: new Stroke({ color: '#3399CC', width: 2 }),
-                    fill: new Fill({ color: 'rgba(0, 153, 204, 0.2)' }),
-                    image: new CircleStyle({
-                        radius: 5,
-                        fill: new Fill({ color: 'rgba(0, 153, 204, 0.2)' }),
-                        stroke: new Stroke({ color: '#3399CC', width: 1.5 })
-                    })
-                }),
+                style: layerData.wmsStyleEnabled ? new Style() : sharedStyle,
                 opacity: layerData.opacity,
                 visible: layerData.visible,
             });
@@ -92,7 +146,6 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
                 visible: layerData.visible,
             });
         } else if (layerData.type === 'local' && layerData.data) {
-            // Reconstruct inlined local layer
             try {
                 const features = new GeoJSON().readFeatures(layerData.data, {
                     dataProjection: 'EPSG:4326',
@@ -100,15 +153,7 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
                 });
                 olLayer = new VectorLayer({
                     source: new VectorSource({ features }),
-                    style: new Style({
-                        stroke: new Stroke({ color: '#ffcc33', width: 2 }),
-                        fill: new Fill({ color: 'rgba(255, 204, 51, 0.3)' }),
-                        image: new CircleStyle({
-                            radius: 5,
-                            fill: new Fill({ color: '#ffcc33' }),
-                            stroke: new Stroke({ color: '#ffffff', width: 1.5 })
-                        })
-                    }),
+                    style: sharedStyle,
                     opacity: layerData.opacity,
                     visible: layerData.visible,
                 });
@@ -169,43 +214,44 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
   return (
     <div className="relative w-full h-full">
         <div ref={mapElementRef} className="w-full h-full" />
-        <div className="absolute top-16 left-2 z-10 bg-gray-800/80 backdrop-blur-sm text-white p-3 rounded-lg shadow-lg w-72 max-h-[calc(100%-8rem)] flex flex-col">
-            <h3 className="text-sm font-semibold mb-2 border-b border-gray-600 pb-2 flex items-center gap-2">
-                <LayersIcon className="h-4 w-4" /> Capas
+        {/* Compact Layers Panel */}
+        <div className="absolute top-14 left-2 z-10 bg-gray-800/90 backdrop-blur-sm text-white p-2 rounded-md shadow-2xl w-60 max-h-[calc(100%-6rem)] flex flex-col border border-gray-700/50">
+            <h3 className="text-[11px] font-bold mb-2 border-b border-gray-600/50 pb-1.5 flex items-center gap-2 px-1 text-gray-200">
+                <LayersIcon className="h-3.5 w-3.5 text-primary" /> CAPAS ACTIVAS
             </h3>
-            <div className="flex-grow overflow-y-auto pr-2 -mr-2">
-                <div className="space-y-4">
+            <div className="flex-grow overflow-y-auto pr-1">
+                <div className="space-y-2">
                 {uiLayers.map(layer => (
-                    <div key={layer.uiId} className="text-xs pb-2 border-b border-white/5 last:border-0">
+                    <div key={layer.uiId} className="text-[10px] pb-2 border-b border-white/5 last:border-0 last:pb-0">
                         {layer.type === 'local-placeholder' ? (
-                             <div className="flex items-center space-x-2 p-1 bg-black/20 rounded-md border border-dashed border-gray-600">
-                                <EyeOff className="h-4 w-4 text-gray-500 flex-shrink-0"/>
-                                <Label className="flex-1 truncate text-gray-500 italic" title={`${layer.name} (excede los 50KB, no disponible en modo compartido)`}>
+                             <div className="flex items-center space-x-2 p-1 bg-black/30 rounded border border-dashed border-gray-600/50 opacity-60">
+                                <EyeOff className="h-3 w-3 text-gray-500 flex-shrink-0"/>
+                                <Label className="flex-1 truncate text-[10px] text-gray-400 italic" title={`${layer.name} (excede el límite de peso)`}>
                                     {layer.name}
                                 </Label>
                             </div>
                         ) : (
-                            <>
+                            <div className="px-1">
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id={`vis-${layer.uiId}`}
                                         checked={layer.visible}
                                         onCheckedChange={(checked) => handleVisibilityChange(layer.uiId, !!checked)}
-                                        className="border-gray-400 data-[state=checked]:bg-primary"
+                                        className="h-3.5 w-3.5 border-gray-500 data-[state=checked]:bg-primary rounded-sm"
                                     />
-                                    <Label htmlFor={`vis-${layer.uiId}`} className={cn("flex-1 truncate cursor-pointer", !layer.visible && "text-gray-400")} title={layer.name}>
-                                        {layer.name} {layer.type === 'local' && '(Inyectada)'}
+                                    <Label htmlFor={`vis-${layer.uiId}`} className={cn("flex-1 truncate cursor-pointer leading-tight", !layer.visible && "text-gray-500")} title={layer.name}>
+                                        {layer.name}
                                     </Label>
                                 </div>
-                                <div className="mt-2 pl-1 flex items-center gap-2">
-                                    <span className="text-[10px] text-gray-500 w-6">Op.</span>
+                                <div className="mt-1.5 flex items-center gap-2">
+                                    <span className="text-[9px] text-gray-500 font-medium w-4">Op.</span>
                                     <Slider
                                         value={[layer.opacity * 100]}
                                         onValueChange={(value) => handleOpacityChange(layer.uiId, value[0] / 100)}
-                                        className="flex-1 h-2"
+                                        className="flex-1 h-1.5"
                                     />
                                 </div>
-                            </>
+                            </div>
                         )}
                     </div>
                 ))}

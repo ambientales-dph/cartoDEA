@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -110,6 +111,7 @@ import { useFirestore } from '@/firebase';
 import GeoJSON from 'ol/format/GeoJSON';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
+import { nanoid } from 'nanoid';
 
 import type {
   MapState,
@@ -767,6 +769,13 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
           const olLayer = l.olLayer;
           const geeParams = olLayer.get('geeParams');
 
+          // Common symbology to persist
+          const symbology = {
+            graduatedSymbology: l.graduatedSymbology,
+            categorizedSymbology: l.categorizedSymbology,
+            geoTiffStyle: l.geoTiffStyle,
+          };
+
           if (l.type === 'gee' && geeParams) {
             return {
               type: 'gee',
@@ -777,6 +786,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               },
               opacity: l.opacity,
               visible: l.visible,
+              ...symbology
             };
           }
           if (l.type === 'wfs') {
@@ -789,6 +799,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               visible: l.visible,
               wmsStyleEnabled: (l as VectorMapLayer).wmsStyleEnabled ?? false,
               styleName: olLayer.get('styleName'),
+              ...symbology
             };
           }
           if (['drawing', 'vector', 'analysis', 'sentinel', 'landsat', 'osm'].includes(l.type)) {
@@ -809,7 +820,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                               name: l.name,
                               data: geojson,
                               visible: l.visible,
-                              opacity: l.opacity
+                              opacity: l.opacity,
+                              ...symbology
                           };
                       }
                   }
@@ -819,7 +831,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                 type: 'local-placeholder',
                 name: l.name,
                 visible: l.visible,
-                opacity: l.opacity
+                opacity: l.opacity,
+                ...symbology
               };
           }
           return null;
