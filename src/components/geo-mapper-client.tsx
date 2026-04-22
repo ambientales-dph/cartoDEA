@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -379,10 +378,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [isGeeAuthenticated, setIsGeeAuthenticated] = useState(false);
   const [isGeeAuthenticating, setIsGeeAuthenticating] = useState(true);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [trelloCardNotification, setTrelloCardInfo] =
-    useState<TrelloCardInfo | null>(null);
-  const [statisticsLayer, setStatisticsLayer] =
-    useState<VectorMapLayer | null>(null);
+  const [trelloCardNotification, setTrelloCardInfo] = useState<TrelloCardInfo | null>(null);
+  const [statisticsLayer, setStatisticsLayer] = useState<VectorMapLayer | null>(null);
 
   const updateDiscoveredLayerState = useCallback(
     (layerName: string, added: boolean, type: 'wms' | 'wfs') => {
@@ -769,41 +766,39 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
           const olLayer = l.olLayer;
           const geeParams = olLayer.get('geeParams');
 
-          // Common symbology to persist
-          const symbology = {
-            graduatedSymbology: l.graduatedSymbology,
-            categorizedSymbology: l.categorizedSymbology,
-            geoTiffStyle: l.geoTiffStyle,
+          // Build object carefully to avoid 'undefined' which Firestore rejects
+          const serialized: any = {
+            name: l.name,
+            opacity: l.opacity,
+            visible: l.visible,
           };
+
+          // Only include optional symbology if they are set
+          if (l.graduatedSymbology) serialized.graduatedSymbology = l.graduatedSymbology;
+          if (l.categorizedSymbology) serialized.categorizedSymbology = l.categorizedSymbology;
+          if (l.geoTiffStyle) serialized.geoTiffStyle = l.geoTiffStyle;
 
           if (l.type === 'gee' && geeParams) {
             return {
+              ...serialized,
               type: 'gee',
-              name: l.name,
               geeParams: {
-                bandCombination: geeParams.bandCombination,
-                tileUrl: geeParams.tileUrl,
-              },
-              opacity: l.opacity,
-              visible: l.visible,
-              ...symbology
+                bandCombination: geeParams.bandCombination || null,
+                tileUrl: geeParams.tileUrl || null,
+              }
             };
           }
           if (l.type === 'wfs') {
             return {
+              ...serialized,
               type: 'wfs',
-              name: l.name,
-              url: olLayer.get('serverUrl'),
-              layerName: olLayer.get('gsLayerName'),
-              opacity: l.opacity,
-              visible: l.visible,
+              url: olLayer.get('serverUrl') || null,
+              layerName: olLayer.get('gsLayerName') || null,
               wmsStyleEnabled: (l as VectorMapLayer).wmsStyleEnabled ?? false,
-              styleName: olLayer.get('styleName'),
-              ...symbology
+              styleName: olLayer.get('styleName') || null,
             };
           }
           if (['drawing', 'vector', 'analysis', 'sentinel', 'landsat', 'osm'].includes(l.type)) {
-              // Extract GeoJSON data for local layers if they are small enough
               if (olLayer instanceof VectorLayer) {
                   const features = olLayer.getSource()?.getFeatures() || [];
                   if (features.length > 0) {
@@ -812,27 +807,21 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                           featureProjection: 'EPSG:3857'
                       });
                       
-                      const sizeInKb = (geojson.length * 2) / 1024; // Rough estimate of size in KB
+                      const sizeInKb = (geojson.length * 2) / 1024;
 
                       if (sizeInKb < MAX_INLINE_LAYER_SIZE_KB) {
                           return {
+                              ...serialized,
                               type: 'local',
-                              name: l.name,
                               data: geojson,
-                              visible: l.visible,
-                              opacity: l.opacity,
-                              ...symbology
                           };
                       }
                   }
               }
               
               return {
+                ...serialized,
                 type: 'local-placeholder',
-                name: l.name,
-                visible: l.visible,
-                opacity: l.opacity,
-                ...symbology
               };
           }
           return null;

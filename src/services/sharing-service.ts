@@ -1,12 +1,26 @@
-
 'use client';
 
 import { collection, addDoc, getDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
 import type { MapState } from "@/lib/types";
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 const SHARED_MAPS_COLLECTION = 'sharedMaps';
+
+/**
+ * Removes all keys with 'undefined' values from an object recursively.
+ * Firestore does not support 'undefined'.
+ */
+function sanitizeData(obj: any): any {
+    if (Array.isArray(obj)) {
+        return obj.map(sanitizeData);
+    } else if (obj !== null && typeof obj === 'object') {
+        return Object.fromEntries(
+            Object.entries(obj)
+                .filter(([_, v]) => v !== undefined)
+                .map(([k, v]) => [k, sanitizeData(v)])
+        );
+    }
+    return obj;
+}
 
 /**
  * Saves the current map state to Firestore and returns the new document's ID.
@@ -19,8 +33,11 @@ export async function saveMapState(db: Firestore, mapState: MapState): Promise<s
         throw new Error("Firestore instance not provided to saveMapState.");
     }
 
+    // Sanitize data to remove any 'undefined' values which Firestore rejects
+    const sanitizedState = sanitizeData(mapState);
+
     const dataToSend = {
-        ...mapState,
+        ...sanitizedState,
         createdAt: serverTimestamp(),
     };
 
@@ -29,8 +46,6 @@ export async function saveMapState(db: Firestore, mapState: MapState): Promise<s
         return docRef.id;
     } catch (serverError: any) {
         console.error("Error writing document to Firestore:", serverError);
-        // Here you can still create and throw a more detailed error if you wish,
-        // or just re-throw the original error.
         throw new Error(`Could not save map state: ${serverError.message}`);
     }
 }
@@ -52,7 +67,6 @@ export async function getMapState(db: Firestore, mapId: string): Promise<MapStat
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-            // The data is already in the correct format, just cast it.
             return docSnap.data() as MapState;
         } else {
             console.log("No such map state document!");
@@ -77,8 +91,6 @@ export async function debugReadDocument(db: Firestore) {
     const docRef = doc(db, 'sharedMaps', 'debug-test');
     await getDoc(docRef);
   } catch (error) {
-    // This is expected to fail with a permission error if rules are working.
-    // The rich error will be thrown by the FirestorePermissionError handler.
     console.log("Debug read initiated. If a permission error is expected, this is normal.");
   }
 }
