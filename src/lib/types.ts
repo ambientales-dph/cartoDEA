@@ -201,29 +201,21 @@ export interface GeeProfileOutput {
 // --- Map Sharing Types ---
 
 // Represents a layer that can be recreated remotely
-export interface RemoteSerializableLayer {
-    type: 'wms' | 'wfs' | 'gee';
+export interface SerializableMapLayer {
+    type: 'wms' | 'wfs' | 'gee' | 'local' | 'local-placeholder';
     name: string;
-    url: string | null;
-    layerName: string | null;
+    url?: string | null;
+    layerName?: string | null;
     opacity: number;
     visible: boolean;
-    wmsStyleEnabled: boolean;
-    styleName: string | null;
-    geeParams: {
+    wmsStyleEnabled?: boolean;
+    styleName?: string | null;
+    geeParams?: {
         bandCombination: string | null;
         tileUrl: string | null;
     } | null;
+    data?: string | null; // For inlined GeoJSON data
 }
-
-// Represents a layer that was local and cannot be recreated, but we note its presence
-export interface LocalSerializableLayer {
-    type: 'local-placeholder';
-    name: string;
-}
-
-export type SerializableMapLayer = RemoteSerializableLayer | LocalSerializableLayer;
-
 
 export interface MapState {
     subject: string; // The title or subject of the shared map

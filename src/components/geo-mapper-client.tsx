@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -109,6 +108,8 @@ import { cn } from '@/lib/utils';
 import { saveMapState, debugReadDocument } from '@/services/sharing-service';
 import { useFirestore } from '@/firebase';
 import GeoJSON from 'ol/format/GeoJSON';
+import VectorLayer from 'ol/layer/Vector';
+import VectorSource from 'ol/source/Vector';
 
 import type {
   MapState,
@@ -126,8 +127,6 @@ import type {
   VectorMapLayer,
   CategorizedSymbology,
   SerializableMapLayer,
-  RemoteSerializableLayer,
-  LayerGroup,
 } from '@/lib/types';
 import {
   chatWithMapAssistant,
@@ -245,6 +244,7 @@ const availableBaseLayersForSelect: BaseLayerOptionForSelect[] =
 
 const PANEL_WIDTH = 350;
 const PANEL_PADDING = 8;
+const MAX_INLINE_LAYER_SIZE_KB = 50; // Max size for inlined GeoJSON data in shared maps
 
 const panelToggleConfigs = [
   { id: 'wfsLibrary', IconComponent: Library, name: 'Biblioteca de Servidores' },
@@ -777,10 +777,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               },
               opacity: l.opacity,
               visible: l.visible,
-              url: null,
-              layerName: null,
-              wmsStyleEnabled: false,
-              styleName: null,
             };
           }
           if (l.type === 'wfs') {
@@ -793,18 +789,38 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               visible: l.visible,
               wmsStyleEnabled: (l as VectorMapLayer).wmsStyleEnabled ?? false,
               styleName: olLayer.get('styleName'),
-              geeParams: null,
             };
           }
-          if (
-            ['drawing', 'vector', 'analysis', 'sentinel', 'landsat', 'osm'].includes(
-              l.type
-            )
-          ) {
-            return {
-              type: 'local-placeholder',
-              name: l.name,
-            };
+          if (['drawing', 'vector', 'analysis', 'sentinel', 'landsat', 'osm'].includes(l.type)) {
+              // Extract GeoJSON data for local layers if they are small enough
+              if (olLayer instanceof VectorLayer) {
+                  const features = olLayer.getSource()?.getFeatures() || [];
+                  if (features.length > 0) {
+                      const geojson = new GeoJSON().writeFeatures(features, {
+                          dataProjection: 'EPSG:4326',
+                          featureProjection: 'EPSG:3857'
+                      });
+                      
+                      const sizeInKb = (geojson.length * 2) / 1024; // Rough estimate of size in KB
+
+                      if (sizeInKb < MAX_INLINE_LAYER_SIZE_KB) {
+                          return {
+                              type: 'local',
+                              name: l.name,
+                              data: geojson,
+                              visible: l.visible,
+                              opacity: l.opacity
+                          };
+                      }
+                  }
+              }
+              
+              return {
+                type: 'local-placeholder',
+                name: l.name,
+                visible: l.visible,
+                opacity: l.opacity
+              };
           }
           return null;
         };
@@ -928,7 +944,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
 
     const loadSharedMap = async () => {
       toast({ description: `Cargando mapa: ${initialMapState.subject}` });
-      const { handleAddHybridLayer, addGeeLayerToMap } =
+      const { handleAddHybridLayer, addGeeLayerToMap, addLayer } =
         layerManagerHookRef.current!;
       const map = mapRef.current!;
 
@@ -949,8 +965,28 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             addGeeLayerToMap(layerState.geeParams.tileUrl!, layerState.name, {
               bandCombination: layerState.geeParams.bandCombination as any,
             });
+          } else if (layerState.type === 'local' && layerState.data) {
+              const features = new GeoJSON().readFeatures(layerState.data, {
+                  dataProjection: 'EPSG:4326',
+                  featureProjection: 'EPSG:3857'
+              });
+              const source = new VectorSource({ features });
+              const olLayer = new VectorLayer({
+                  source,
+                  properties: { id: `shared-local-${nanoid()}`, name: layerState.name, type: 'vector' },
+                  opacity: layerState.opacity,
+                  visible: layerState.visible
+              });
+              addLayer({
+                  id: olLayer.get('id'),
+                  name: layerState.name,
+                  olLayer,
+                  visible: layerState.visible,
+                  opacity: layerState.opacity,
+                  type: 'vector'
+              });
           } else if (layerState.type === 'local-placeholder') {
-            console.log(`Skipping local layer: ${layerState.name}`);
+            console.log(`Skipping large local layer: ${layerState.name}`);
           }
         } catch (e) {
           console.error('Error loading shared layer', layerState, e);

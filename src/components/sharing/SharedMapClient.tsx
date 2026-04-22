@@ -18,8 +18,9 @@ import { Style, Fill, Stroke, Circle as CircleStyle } from 'ol/style';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { EyeOff } from 'lucide-react';
+import { EyeOff, Layers as LayersIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { nanoid } from 'nanoid';
 
 
 interface SharedMapClientProps {
@@ -90,6 +91,30 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
                 opacity: layerData.opacity,
                 visible: layerData.visible,
             });
+        } else if (layerData.type === 'local' && layerData.data) {
+            // Reconstruct inlined local layer
+            try {
+                const features = new GeoJSON().readFeatures(layerData.data, {
+                    dataProjection: 'EPSG:4326',
+                    featureProjection: 'EPSG:3857'
+                });
+                olLayer = new VectorLayer({
+                    source: new VectorSource({ features }),
+                    style: new Style({
+                        stroke: new Stroke({ color: '#ffcc33', width: 2 }),
+                        fill: new Fill({ color: 'rgba(255, 204, 51, 0.3)' }),
+                        image: new CircleStyle({
+                            radius: 5,
+                            fill: new Fill({ color: '#ffcc33' }),
+                            stroke: new Stroke({ color: '#ffffff', width: 1.5 })
+                        })
+                    }),
+                    opacity: layerData.opacity,
+                    visible: layerData.visible,
+                });
+            } catch (e) {
+                console.error("Error reconstructing inlined layer:", layerData.name, e);
+            }
         }
 
         if (olLayer) {
@@ -125,7 +150,6 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
     setUiLayers(prev => prev.map(l => {
         if (l.uiId === uiId && l.olLayer) {
             l.olLayer.setVisible(isVisible);
-            // This is a mutable change on the layer object, but we trigger a state update to be safe
             return { ...l, visible: isVisible };
         }
         return l;
@@ -146,15 +170,17 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
     <div className="relative w-full h-full">
         <div ref={mapElementRef} className="w-full h-full" />
         <div className="absolute top-16 left-2 z-10 bg-gray-800/80 backdrop-blur-sm text-white p-3 rounded-lg shadow-lg w-72 max-h-[calc(100%-8rem)] flex flex-col">
-            <h3 className="text-sm font-semibold mb-2 border-b border-gray-600 pb-2">Capas</h3>
+            <h3 className="text-sm font-semibold mb-2 border-b border-gray-600 pb-2 flex items-center gap-2">
+                <LayersIcon className="h-4 w-4" /> Capas
+            </h3>
             <div className="flex-grow overflow-y-auto pr-2 -mr-2">
                 <div className="space-y-4">
                 {uiLayers.map(layer => (
-                    <div key={layer.uiId} className="text-xs pb-2">
+                    <div key={layer.uiId} className="text-xs pb-2 border-b border-white/5 last:border-0">
                         {layer.type === 'local-placeholder' ? (
                              <div className="flex items-center space-x-2 p-1 bg-black/20 rounded-md border border-dashed border-gray-600">
                                 <EyeOff className="h-4 w-4 text-gray-500 flex-shrink-0"/>
-                                <Label className="flex-1 truncate text-gray-500 italic" title={`${layer.name} (no disponible en modo compartido)`}>
+                                <Label className="flex-1 truncate text-gray-500 italic" title={`${layer.name} (excede los 50KB, no disponible en modo compartido)`}>
                                     {layer.name}
                                 </Label>
                             </div>
@@ -167,15 +193,16 @@ const SharedMapClient: React.FC<SharedMapClientProps> = ({ mapState }) => {
                                         onCheckedChange={(checked) => handleVisibilityChange(layer.uiId, !!checked)}
                                         className="border-gray-400 data-[state=checked]:bg-primary"
                                     />
-                                    <Label htmlFor={`vis-${layer.uiId}`} className="flex-1 truncate" title={layer.name}>
-                                        {layer.name}
+                                    <Label htmlFor={`vis-${layer.uiId}`} className={cn("flex-1 truncate cursor-pointer", !layer.visible && "text-gray-400")} title={layer.name}>
+                                        {layer.name} {layer.type === 'local' && '(Inyectada)'}
                                     </Label>
                                 </div>
-                                <div className="mt-1.5 pl-1">
+                                <div className="mt-2 pl-1 flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500 w-6">Op.</span>
                                     <Slider
                                         value={[layer.opacity * 100]}
                                         onValueChange={(value) => handleOpacityChange(layer.uiId, value[0] / 100)}
-                                        className="w-full h-2"
+                                        className="flex-1 h-2"
                                     />
                                 </div>
                             </>
