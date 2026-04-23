@@ -440,10 +440,11 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   });
 
   const initialGeoServerUrl = 'https://www.minfra.gba.gob.ar/ambientales/geoserver';
+  const hasInitializedRef = useRef(false);
 
   useEffect(() => {
-    if (initialMapState) return;
-    if (!isMapReady) return;
+    if (initialMapState || !isMapReady || hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
 
     setIsGeeAuthenticating(true);
     authenticateWithGee()
@@ -510,7 +511,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       .catch((error) => {
         console.error('Fallo al cargar las capas iniciales de DEAS:', error);
       });
-  }, [isMapReady, initialMapState, handleFetchGeoServerLayers, layerManagerHook, toast]);
+  }, [isMapReady, initialMapState, handleFetchGeoServerLayers, toast]);
 
   const handleReloadDeasLayers = useCallback(async () => {
     toast({ description: 'Recargando capas desde el servidor de DEAS...' });
@@ -932,9 +933,11 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     [layerManagerHook.layers, togglePanelMinimize, toast]
   );
 
+  const hasLoadedSharedMapRef = useRef(false);
   useEffect(() => {
-    if (!initialMapState || !isMapReady || !mapRef.current)
+    if (!initialMapState || !isMapReady || !mapRef.current || hasLoadedSharedMapRef.current)
       return;
+    hasLoadedSharedMapRef.current = true;
 
     const loadSharedMap = async () => {
       toast({ description: `Cargando mapa: ${initialMapState.subject}` });
@@ -988,7 +991,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     };
 
     loadSharedMap();
-  }, [initialMapState, isMapReady, mapRef, layerManagerHook, toast]);
+  }, [initialMapState, isMapReady, mapRef, toast]);
 
 
   const handleRecalculateTrajectoryAttributes = (layerId: string) => {
