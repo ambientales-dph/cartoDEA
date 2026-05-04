@@ -24,6 +24,7 @@ import {
   Share2,
   CloudRain,
   Ellipsis,
+  User,
 } from 'lucide-react';
 import { Style, Fill, Stroke, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
 import { transform, transformExtent } from 'ol/proj';
@@ -58,6 +59,7 @@ import {
 } from './ui/alert-dialog';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import { Map as OLMap, View } from 'ol';
 import TileLayer from 'ol/layer/Tile';
@@ -106,11 +108,14 @@ import { useOsmQuery } from '@/hooks/osm-integration/useOsmQuery';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { saveMapState, debugReadDocument } from '@/services/sharing-service';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import GeoJSON from 'ol/format/GeoJSON';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import { nanoid } from 'nanoid';
+
+import { usePortalAuth } from '@/hooks/auth/usePortalAuth';
+import { useInactivityTimeout } from '@/hooks/auth/useInactivityTimeout';
 
 import type {
   MapState,
@@ -264,6 +269,7 @@ interface GeoMapperClientProps {
 
 export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const firestore = useFirestore();
+  const user = useUser();
   const mapAreaRef = useRef<HTMLDivElement>(null);
   const toolsPanelRef = useRef<HTMLDivElement>(null);
   const legendPanelRef = useRef<HTMLDivElement>(null);
@@ -283,6 +289,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [projectLayerIds, setProjectLayerIds] = useState<string[]>([]);
 
   const [isClientMounted, setIsClientMounted] = useState(false);
+
+  // Initialize Auth Sync and Timeout logic
+  usePortalAuth();
+  useInactivityTimeout();
 
   useEffect(() => {
     setIsClientMounted(true);
@@ -1213,7 +1223,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               </AlertDialog>
             </div>
 
-            <div className="flex flex-row space-x-1 ml-auto flex-shrink-0">
+            <div className="flex flex-row space-x-1 ml-auto flex-shrink-0 items-center">
               {panelToggleConfigs.map((panelConfig) => {
                 const panelState = panels[panelConfig.id as keyof typeof panels];
                 if (!panelState) return null;
@@ -1253,6 +1263,20 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                   </Tooltip>
                 );
               })}
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                   <Avatar className="h-8 w-8 ml-2 border border-white/20">
+                    <AvatarImage src={user?.photoURL || ''} alt={user?.displayName || 'Usuario'} />
+                    <AvatarFallback className="bg-primary/20 text-white text-[10px]">
+                      {user?.displayName?.[0] || <User className="h-3 w-3" />}
+                    </AvatarFallback>
+                  </Avatar>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-gray-700 text-white border-gray-600">
+                  <p className="text-xs">{user ? (user.displayName || user.email) : 'Sin sesión'}</p>
+                </TooltipContent>
+              </Tooltip>
 
             </div>
           </TooltipProvider>
@@ -1363,6 +1387,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onApplyGeoTiffStyle={layerManagerHook.applyGeoTiffStyle}
             onToggleWmsStyle={layerManagerHook.toggleWmsStyle}
             onGroupLayers={layerManagerHook.groupLayers}
+            onToggleGroupVisibility={layerManagerHook.toggleGroupVisibility}
             onToggleGroupExpanded={layerManagerHook.toggleGroupExpanded}
             onSetGroupDisplayMode={layerManagerHook.setGroupDisplayMode}
             onUngroup={layerManagerHook.ungroupLayer}

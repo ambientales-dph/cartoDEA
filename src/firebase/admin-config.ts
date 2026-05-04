@@ -1,5 +1,6 @@
 // src/firebase/admin-config.ts
 import * as admin from 'firebase-admin';
+import * as fs from 'fs';
 
 const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
@@ -18,7 +19,8 @@ try {
 
 export const initAdminApp = () => {
   if (admin.apps.length > 0) {
-    return admin.app();
+    const mainApp = admin.apps.find(app => app?.name === '[DEFAULT]');
+    if (mainApp) return mainApp;
   }
 
   try {
@@ -29,5 +31,37 @@ export const initAdminApp = () => {
   } catch (error: any) {
     console.error("Firebase admin initialization error", error.stack);
     throw error;
+  }
+};
+
+/**
+ * Initializes the secondary app (Project A / Portal DEA) to validate external tokens.
+ */
+export const initPortalAdminApp = () => {
+  const portalApp = admin.apps.find(app => app?.name === 'portal-dea');
+  if (portalApp) return portalApp;
+
+  const portalKeyPath = process.env.PORTAL_DEA_SERVICE_ACCOUNT_PATH;
+  if (!portalKeyPath) {
+    console.warn("PORTAL_DEA_SERVICE_ACCOUNT_PATH is not configured. Portal sync will not work.");
+    return null;
+  }
+
+  try {
+    let portalServiceAccount;
+    // Handle both raw JSON string or file path
+    if (portalKeyPath.trim().startsWith('{')) {
+      portalServiceAccount = JSON.parse(portalKeyPath);
+    } else {
+      const fileContent = fs.readFileSync(portalKeyPath, 'utf8');
+      portalServiceAccount = JSON.parse(fileContent);
+    }
+
+    return admin.initializeApp({
+      credential: admin.credential.cert(portalServiceAccount),
+    }, 'portal-dea');
+  } catch (error) {
+    console.error("Failed to initialize Portal Admin App:", error);
+    return null;
   }
 };
