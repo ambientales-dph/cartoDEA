@@ -64,6 +64,7 @@ import {
 } from './ui/alert-dialog';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import { Map as OLMap, View } from 'ol';
