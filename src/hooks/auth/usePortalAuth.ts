@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { signInWithCustomToken, updateProfile } from 'firebase/auth';
+import { signInWithCustomToken, updateProfile, signInAnonymously } from 'firebase/auth';
 import { useAuth } from '@/firebase/provider';
 import { useToast } from '@/hooks/use-toast';
 
+/**
+ * Hook que gestiona la sincronización de la sesión con el Portal DEA
+ * y maneja el mock user en entornos de desarrollo.
+ */
 export function usePortalAuth() {
   const auth = useAuth();
   const { toast } = useToast();
@@ -41,7 +45,7 @@ export function usePortalAuth() {
       const pictureUrl = getCookie('portal_user_picture');
       const displayName = getCookie('portal_user_name');
 
-      // 3. Actualizar el perfil local si faltan datos (importante para el avatar en el header)
+      // 3. Actualizar el perfil local si faltan datos
       if (user && (pictureUrl || displayName)) {
         await updateProfile(user, {
           displayName: displayName ? decodeURIComponent(displayName) : user.displayName,
@@ -73,18 +77,28 @@ export function usePortalAuth() {
   }, [auth, toast]);
 
   useEffect(() => {
-    // 1. Manejar modo desarrollo en localhost
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      setIsInitializing(false);
-      return;
-    }
+    if (typeof window === 'undefined') return;
 
-    // 2. Recuperar el Custom Token de la cookie de intercambio
+    const hostname = window.location.hostname;
+    const isDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.cloudworkstations.dev');
+    
     const token = getCookie('portal_auth_token');
 
     if (token) {
       completePortalSignIn(token);
     } else {
+      // Si no hay token y estamos en desarrollo, logueamos un Mock User anónimo
+      if (isDev && !auth.currentUser && !syncStartedRef.current) {
+          console.log("usePortalAuth: Iniciando Mock User en desarrollo...");
+          signInAnonymously(auth).then(async (cred) => {
+              if (cred.user && !cred.user.displayName) {
+                  await updateProfile(cred.user, {
+                      displayName: "Agente de Desarrollo",
+                      photoURL: "https://picsum.photos/seed/dev-user/200"
+                  });
+              }
+          }).catch(err => console.error("Mock login failed:", err));
+      }
       setIsInitializing(false);
     }
   }, [auth, completePortalSignIn]);

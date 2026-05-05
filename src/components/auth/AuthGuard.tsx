@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect } from 'react';
@@ -24,32 +23,43 @@ export function AuthGuard({ children }: AuthGuardProps) {
     useEffect(() => {
         // Solo redirigir si la inicialización terminó, no hay usuario y no se está sincronizando un token
         if (!isInitialized && !isSyncing && !user) {
-            // No hay sesión en localhost? Permitir desarrollo pero avisar si es necesario
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                console.log("AuthGuard: Modo desarrollo detectado. Se permite acceso sin sesión.");
+            const hostname = window.location.hostname;
+            const isDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.cloudworkstations.dev');
+
+            if (isDev) {
+                console.log("AuthGuard: Entorno de desarrollo. Esperando inicio de sesión automático...");
                 return;
             }
             
-            // Redirigir al portal para autenticación
+            // Redirigir al portal para autenticación en producción
             window.location.href = PORTAL_LOGIN_URL;
         }
     }, [user, isSyncing, isInitialized]);
 
     // Pantalla de carga mientras se verifica la sesión o se sincroniza el token
-    if (isInitialized || isSyncing) {
+    // En desarrollo permitimos el render si no hay usuario aún pero estamos cargando
+    if (isSyncing) {
         return (
             <div className="flex flex-col items-center justify-center h-screen w-screen bg-gray-900 text-white">
                 <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-                <p className="text-sm font-medium animate-pulse">Verificando credenciales con Portal DEA...</p>
+                <p className="text-sm font-medium animate-pulse">Sincronizando con Portal DEA...</p>
             </div>
         );
     }
 
-    // Si no hay usuario y estamos en producción, no renderizar nada mientras se hace el redirect
-    if (!user && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        return null;
+    // Permitir acceso si hay usuario
+    if (user) {
+        return <>{children}</>;
     }
 
-    // Si hay usuario (o estamos en modo desarrollo), mostrar el contenido
-    return <>{children}</>;
+    // En desarrollo, mostramos el contenido aunque el usuario esté cargando (para evitar flashes)
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+    const isDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.cloudworkstations.dev');
+    
+    if (isDev) {
+        return <>{children}</>;
+    }
+
+    // Si no hay usuario y estamos en producción, no renderizar nada mientras se hace el redirect
+    return null;
 }
