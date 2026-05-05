@@ -55,6 +55,21 @@
         }
       },
       "required": ["subject", "layers", "view", "baseLayerId", "createdAt"]
+    },
+    "UserMap": {
+      "title": "User Map",
+      "description": "A map saved by an authenticated user in their personal library.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the map owner." },
+        "subject": { "type": "string" },
+        "layers": { "type": "array", "items": { "type": "object" } },
+        "view": { "type": "object" },
+        "baseLayerId": { "type": "string" },
+        "baseLayerSettings": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "subject", "layers", "view", "baseLayerId", "updatedAt"]
     }
   },
   "auth": {
@@ -63,7 +78,7 @@
   "firestore": {
     "rules": {
       "version": 2,
-      "rules": "rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    // Reglas para Mapas Compartidos\n    match /sharedMaps/{mapId} {\n        // Cualquiera con el enlace puede leer un mapa compartido\n        allow read;\n        // Cualquiera puede crear un mapa compartido\n        allow create;\n        // Nadie puede actualizar o borrar un mapa compartido desde el cliente\n        allow update, delete: if false;\n    }\n    \n    // Regla de denegación por defecto para cualquier otra colección\n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}"
+      "rules": "rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    // Reglas para Mapas Compartidos\n    match /sharedMaps/{mapId} {\n        allow read;\n        allow create;\n        allow update, delete: if false;\n    }\n\n    // Reglas para Mapas de Usuario\n    match /userMaps/{mapId} {\n        // Solo el dueño puede leer, actualizar o borrar sus mapas\n        allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.userId;\n        // Cualquier usuario autenticado puede crear un mapa siempre que se asigne a su UID\n        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;\n    }\n    \n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}"
     }
   }
 }

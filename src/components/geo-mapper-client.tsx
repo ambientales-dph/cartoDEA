@@ -26,6 +26,10 @@ import {
   CloudRain,
   Ellipsis,
   User,
+  FilePlus2,
+  FolderOpen,
+  Save,
+  Trash2,
 } from 'lucide-react';
 import { Style, Fill, Stroke, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
 import { transform, transformExtent } from 'ol/proj';
@@ -108,7 +112,7 @@ import { useWfsLibrary } from '@/hooks/wfs-library/useWfsLibrary';
 import { useOsmQuery } from '@/hooks/osm-integration/useOsmQuery';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { saveMapState, debugReadDocument } from '@/services/sharing-service';
+import { saveMapState, saveUserMap, getUserMaps, deleteUserMap } from '@/services/sharing-service';
 
 // Correct explicit imports from sub-paths to avoid Ambiguous resolution with src/firebase.json
 import { useFirestore } from '@/firebase/provider';
@@ -288,10 +292,17 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const analysisPanelRef = useRef<HTMLDivElement>(null);
   const climaPanelRef = useRef<HTMLDivElement>(null);
   const trelloPopupRef = useRef<Window | null>(null);
+  
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [isSaveMapDialogOpen, setIsSaveMapDialogOpen] = useState(false);
+  const [isLoadMapDialogOpen, setIsLoadMapDialogOpen] = useState(false);
   const [isConfirmCloseProjectOpen, setIsConfirmCloseProjectOpen] = useState(false);
+  const [isConfirmNewMapOpen, setIsConfirmNewMapOpen] = useState(false);
+  
   const [mapSubject, setMapSubject] = useState('');
   const [projectLayerIds, setProjectLayerIds] = useState<string[]>([]);
+  const [userMapsList, setUserMapsList] = useState<(MapState & { id: string })[]>([]);
+  const [isLoadingUserMaps, setIsLoadingUserMaps] = useState(false);
 
   const [isClientMounted, setIsClientMounted] = useState(false);
 
@@ -751,20 +762,9 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     map.renderSync();
   }, [mapRef, isCapturing, toast, activeBaseLayerId]);
 
-  const handleShareMap = useCallback(async () => {
-    if (!mapRef.current || !firestore) {
-      toast({
-        title: 'Error',
-        description: 'El mapa o la base de datos no están listos.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    toast({ description: 'Guardando estado del mapa...' });
-
-    const currentView = mapRef.current.getView();
-    const mapState: MapState = {
+  const getCurrentMapState = useCallback((): MapState => {
+    const currentView = mapRef.current!.getView();
+    return {
       subject: mapSubject || 'Mapa sin título',
       view: {
         center: transform(currentView.getCenter() || [0, 0], 'EPSG:3857', 'EPSG:4326'),
@@ -847,6 +847,20 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         }
       }),
     };
+  }, [mapRef, mapSubject, activeBaseLayerId, baseLayerSettings, layerManagerHook.layers]);
+
+  const handleShareMap = useCallback(async () => {
+    if (!mapRef.current || !firestore) {
+      toast({
+        title: 'Error',
+        description: 'El mapa o la base de datos no están listos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({ description: 'Guardando estado del mapa...' });
+    const mapState = getCurrentMapState();
 
     try {
       const mapId = await saveMapState(firestore, mapState);
@@ -867,7 +881,120 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         variant: 'destructive',
       });
     }
-  }, [mapRef, firestore, mapSubject, activeBaseLayerId, baseLayerSettings, layerManagerHook.layers, toast]);
+  }, [getCurrentMapState, firestore, toast]);
+
+  const handleSaveUserMap = useCallback(async () => {
+    if (!mapRef.current || !firestore || !user) {
+        toast({ title: 'Error', description: 'Debes iniciar sesión para guardar mapas.', variant: 'destructive' });
+        return;
+    }
+    toast({ description: 'Guardando en tu biblioteca...' });
+    const mapState = getCurrentMapState();
+
+    try {
+        await saveUserMap(firestore, user.uid, mapState);
+        toast({ title: 'Éxito', description: `Mapa "${mapState.subject}" guardado en tu biblioteca.` });
+        setIsSaveMapDialogOpen(false);
+        setMapSubject('');
+    } catch (error: any) {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  }, [getCurrentMapState, firestore, user, toast]);
+
+  const handleFetchUserMaps = useCallback(async () => {
+    if (!firestore || !user) return;
+    setIsLoadingUserMaps(true);
+    try {
+        const maps = await getUserMaps(firestore, user.uid);
+        setUserMapsList(maps);
+    } catch (error) {
+        console.error("Error fetching user maps:", error);
+    } finally {
+        setIsLoadingUserMaps(false);
+    }
+  }, [firestore, user]);
+
+  const applyMapState = useCallback(async (mapState: MapState) => {
+      if (!isMapReady || !mapRef.current) return;
+      
+      const { handleAddHybridLayer, addGeeLayerToMap, addLayer, removeLayers } = layerManagerHook;
+      
+      // Clear current operational layers
+      const currentLayerIds = layerManagerHook.layers.map(l => l.id);
+      removeLayers(currentLayerIds);
+
+      // Restore base map and view
+      setActiveBaseLayerId(mapState.baseLayerId);
+      if (mapState.baseLayerSettings) {
+          setBaseLayerSettings(mapState.baseLayerSettings);
+      }
+      mapRef.current.getView().setCenter(transform(mapState.view.center, 'EPSG:4326', 'EPSG:3857'));
+      mapRef.current.getView().setZoom(mapState.view.zoom);
+
+      // Restore layers
+      for (const layerState of mapState.layers) {
+        try {
+          if (layerState.type === 'wfs' && layerState.url && layerState.layerName) {
+            await handleAddHybridLayer(
+              layerState.layerName,
+              layerState.name,
+              layerState.url,
+              undefined,
+              layerState.styleName || undefined,
+              layerState.visible,
+              layerState.opacity,
+              layerState.wmsStyleEnabled
+            );
+          } else if (layerState.type === 'gee' && layerState.geeParams?.tileUrl) {
+            addGeeLayerToMap(layerState.geeParams.tileUrl!, layerState.name, {
+              bandCombination: layerState.geeParams.bandCombination as any,
+            });
+          } else if (layerState.type === 'local' && layerState.data) {
+              const features = new GeoJSON().readFeatures(layerState.data, {
+                  dataProjection: 'EPSG:4326',
+                  featureProjection: 'EPSG:3857'
+              });
+              const source = new VectorSource({ features });
+              const olLayer = new VectorLayer({
+                  source,
+                  properties: { id: `local-${nanoid()}`, name: layerState.name, type: 'vector' },
+                  opacity: layerState.opacity,
+                  visible: layerState.visible
+              });
+              addLayer({
+                  id: olLayer.get('id'),
+                  name: layerState.name,
+                  olLayer,
+                  visible: layerState.visible,
+                  opacity: layerState.opacity,
+                  type: 'vector',
+                  simpleStyle: layerState.simpleStyle,
+                  graduatedSymbology: layerState.graduatedSymbology,
+                  categorizedSymbology: layerState.categorizedSymbology,
+              });
+          }
+        } catch (e) {
+          console.error('Error loading layer from state', layerState, e);
+        }
+      }
+  }, [isMapReady, mapRef, layerManagerHook]);
+
+  const handleNewMap = useCallback(() => {
+      if (!mapRef.current) return;
+      const currentLayerIds = layerManagerHook.layers.map(l => l.id);
+      layerManagerHook.removeLayers(currentLayerIds);
+      mapRef.current.getView().animate({
+          center: transform([-60.0, -36.5], 'EPSG:4326', 'EPSG:3857'),
+          zoom: 7,
+          duration: 1000,
+      });
+      setActiveBaseLayerId(BASE_LAYER_DEFINITIONS[1].id);
+      setBaseLayerSettings({ opacity: 1, brightness: 100, contrast: 100 });
+      setMapSubject('');
+      toast({ description: "Iniciado nuevo mapa en blanco." });
+      setIsConfirmNewMapOpen(false);
+  }, [layerManagerHook, mapRef, toast]);
+
 
   useEffect(() => {
     const mapEl = mapElementRef.current;
@@ -953,60 +1080,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     if (!initialMapState || !isMapReady || !mapRef.current || hasLoadedSharedMapRef.current)
       return;
     hasLoadedSharedMapRef.current = true;
-
-    const loadSharedMap = async () => {
-      toast({ description: `Cargando mapa: ${initialMapState.subject}` });
-      const { handleAddHybridLayer, addGeeLayerToMap, addLayer } = layerManagerHook;
-
-      for (const layerState of initialMapState.layers) {
-        try {
-          if (layerState.type === 'wfs' && layerState.url && layerState.layerName) {
-            await handleAddHybridLayer(
-              layerState.layerName,
-              layerState.name,
-              layerState.url,
-              undefined,
-              layerState.styleName || undefined,
-              layerState.visible,
-              layerState.opacity,
-              layerState.wmsStyleEnabled
-            );
-          } else if (layerState.type === 'gee' && layerState.geeParams?.tileUrl) {
-            addGeeLayerToMap(layerState.geeParams.tileUrl!, layerState.name, {
-              bandCombination: layerState.geeParams.bandCombination as any,
-            });
-          } else if (layerState.type === 'local' && layerState.data) {
-              const features = new GeoJSON().readFeatures(layerState.data, {
-                  dataProjection: 'EPSG:4326',
-                  featureProjection: 'EPSG:3857'
-              });
-              const source = new VectorSource({ features });
-              const olLayer = new VectorLayer({
-                  source,
-                  properties: { id: `shared-local-${nanoid()}`, name: layerState.name, type: 'vector' },
-                  opacity: layerState.opacity,
-                  visible: layerState.visible
-              });
-              addLayer({
-                  id: olLayer.get('id'),
-                  name: layerState.name,
-                  olLayer,
-                  visible: layerState.visible,
-                  opacity: layerState.opacity,
-                  type: 'vector',
-                  simpleStyle: layerState.simpleStyle,
-                  graduatedSymbology: layerState.graduatedSymbology,
-                  categorizedSymbology: layerState.categorizedSymbology,
-              });
-          }
-        } catch (e) {
-          console.error('Error loading shared layer', layerState, e);
-        }
-      }
-    };
-
-    loadSharedMap();
-  }, [initialMapState, isMapReady, mapRef, toast]);
+    applyMapState(initialMapState);
+  }, [initialMapState, isMapReady, mapRef, applyMapState]);
 
 
   const handleRecalculateTrajectoryAttributes = (layerId: string) => {
@@ -1124,13 +1199,13 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                     variant="outline"
                     size="icon"
                     className="h-8 w-8 flex-shrink-0 bg-black/20 hover:bg-black/40 border-0 text-white/90"
-                    title="Más herramientas del mapa"
+                    title="Herramientas del mapa"
                   >
                     <MapPinned className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
-                  className="bg-gray-700/90 text-white border-gray-600 backdrop-blur-sm"
+                  className="bg-gray-700/90 text-white border-gray-600 backdrop-blur-sm w-64"
                   onCloseAutoFocus={(e) => e.preventDefault()}
                 >
                   <DropdownMenuItem
@@ -1147,10 +1222,35 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                       />
                     </div>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={handleOpenStreetView} className="text-xs">
-                    <StreetViewIcon className="h-5 w-5 mr-2" />
-                    Abrir Google Street View
+                  
+                  <DropdownMenuSeparator className="bg-gray-600" />
+                  
+                  <DropdownMenuItem onSelect={() => setIsConfirmNewMapOpen(true)} className="text-xs">
+                    <FilePlus2 className="h-4 w-4 mr-2" />
+                    Nuevo mapa
                   </DropdownMenuItem>
+
+                  <DropdownMenuItem onSelect={() => { handleFetchUserMaps(); setIsLoadMapDialogOpen(true); }} className="text-xs">
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Cargar mapa
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onSelect={() => setIsSaveMapDialogOpen(true)} className="text-xs">
+                    <Save className="h-4 w-4 mr-2" />
+                    Guardar mapa
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                        e.preventDefault();
+                        setIsShareDialogOpen(true);
+                    }}
+                    className="text-xs"
+                  >
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Compartir mapa
+                  </DropdownMenuItem>
+
                   <DropdownMenuItem
                     onSelect={handleCaptureAndDownload}
                     disabled={isCapturing}
@@ -1163,16 +1263,12 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                     )}
                     Capturar Imagen del Mapa
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={(e) => {
-                        e.preventDefault();
-                        setIsShareDialogOpen(true);
-                    }}
-                    className="text-xs"
-                  >
-                    <Share2 className="h-4 w-4 mr-2" />
-                    Compartir Mapa
+
+                  <DropdownMenuItem onSelect={handleOpenStreetView} className="text-xs">
+                    <StreetViewIcon className="h-5 w-5 mr-2" />
+                    Abrir Google Street View
                   </DropdownMenuItem>
+
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -1189,6 +1285,87 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               >
                 <ZoomIn className="h-4 w-4" />
               </Button>
+              
+              {/* --- DIALOGS --- */}
+
+              <AlertDialog open={isConfirmNewMapOpen} onOpenChange={setIsConfirmNewMapOpen}>
+                <AlertDialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>¿Iniciar Nuevo Mapa?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esto limpiará todas las capas actuales y reseteará la vista. Los cambios no guardados se perderán.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleNewMap}>Nuevo Mapa</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog open={isSaveMapDialogOpen} onOpenChange={setIsSaveMapDialogOpen}>
+                <AlertDialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Guardar Mapa en tu Biblioteca</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Ingrese un nombre para guardar este mapa en su cuenta personal.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="grid gap-2">
+                    <Label htmlFor="user-map-subject">Nombre del Mapa</Label>
+                    <Input
+                      id="user-map-subject"
+                      value={mapSubject}
+                      onChange={(e) => setMapSubject(e.target.value)}
+                      placeholder="Ej: Análisis Cuenca Matanza"
+                      autoFocus
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setMapSubject('')}>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleSaveUserMap} disabled={!mapSubject.trim()}>Guardar</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog open={isLoadMapDialogOpen} onOpenChange={setIsLoadMapDialogOpen}>
+                <AlertDialogContent className="max-w-md" onOpenAutoFocus={(e) => e.preventDefault()}>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cargar Mapa Guardado</AlertDialogTitle>
+                  </AlertDialogHeader>
+                  <ScrollArea className="max-h-[300px] p-1">
+                    {isLoadingUserMaps ? (
+                      <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div>
+                    ) : userMapsList.length > 0 ? (
+                      <div className="space-y-2">
+                        {userMapsList.map(map => (
+                          <div key={map.id} className="flex items-center justify-between gap-2 p-2 hover:bg-white/5 rounded-md border border-white/10">
+                            <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { applyMapState(map); setIsLoadMapDialogOpen(false); }}>
+                              <p className="text-sm font-medium truncate">{map.subject}</p>
+                              <p className="text-[10px] text-muted-foreground">Actualizado: {map.updatedAt ? new Date((map.updatedAt as any).seconds * 1000).toLocaleString() : 'Reciente'}</p>
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={async (e) => {
+                                e.stopPropagation();
+                                if(confirm('¿Eliminar este mapa guardado?')) {
+                                    await deleteUserMap(firestore!, map.id);
+                                    handleFetchUserMaps();
+                                }
+                            }}>
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-center text-sm text-muted-foreground p-4">No tienes mapas guardados.</p>
+                    )}
+                  </ScrollArea>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cerrar</AlertDialogCancel>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
               <AlertDialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen} modal={false}>
                 <AlertDialogContent 
                     onOpenAutoFocus={(e) => e.preventDefault()}

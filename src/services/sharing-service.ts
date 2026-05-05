@@ -1,9 +1,11 @@
+
 'use client';
 
-import { collection, addDoc, getDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
+import { collection, addDoc, getDoc, getDocs, query, where, orderBy, deleteDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
 import type { MapState } from "@/lib/types";
 
 const SHARED_MAPS_COLLECTION = 'sharedMaps';
+const USER_MAPS_COLLECTION = 'userMaps';
 
 /**
  * Removes all keys with 'undefined' values from an object recursively.
@@ -33,7 +35,6 @@ export async function saveMapState(db: Firestore, mapState: MapState): Promise<s
         throw new Error("Firestore instance not provided to saveMapState.");
     }
 
-    // Sanitize data to remove any 'undefined' values which Firestore rejects
     const sanitizedState = sanitizeData(mapState);
 
     const dataToSend = {
@@ -50,12 +51,66 @@ export async function saveMapState(db: Firestore, mapState: MapState): Promise<s
     }
 }
 
+/**
+ * Saves a map to the user's personal library.
+ */
+export async function saveUserMap(db: Firestore, userId: string, mapState: MapState): Promise<string> {
+    if (!db || !userId) throw new Error("Parámetros insuficientes para guardar el mapa.");
+
+    const sanitizedState = sanitizeData(mapState);
+    const dataToSend = {
+        ...sanitizedState,
+        userId,
+        updatedAt: serverTimestamp(),
+    };
+
+    try {
+        const docRef = await addDoc(collection(db, USER_MAPS_COLLECTION), dataToSend);
+        return docRef.id;
+    } catch (error: any) {
+        console.error("Error saving user map:", error);
+        throw new Error(`Error al guardar el mapa: ${error.message}`);
+    }
+}
+
+/**
+ * Fetches all maps saved by a specific user.
+ */
+export async function getUserMaps(db: Firestore, userId: string): Promise<(MapState & { id: string })[]> {
+    if (!db || !userId) return [];
+
+    try {
+        const q = query(
+            collection(db, USER_MAPS_COLLECTION),
+            where("userId", "==", userId),
+            orderBy("updatedAt", "desc")
+        );
+
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => ({
+            ...(doc.data() as MapState),
+            id: doc.id
+        }));
+    } catch (error: any) {
+        console.error("Error fetching user maps:", error);
+        return [];
+    }
+}
+
+/**
+ * Deletes a user map by ID.
+ */
+export async function deleteUserMap(db: Firestore, mapId: string) {
+    if (!db || !mapId) return;
+    try {
+        await deleteDoc(doc(db, USER_MAPS_COLLECTION, mapId));
+    } catch (error) {
+        console.error("Error deleting user map:", error);
+    }
+}
 
 /**
  * Retrieves a map state from Firestore by its ID.
- * @param db The Firestore instance.
- * @param mapId The ID of the document to retrieve.
- * @returns A promise that resolves to the MapState object or null if not found.
  */
 export async function getMapState(db: Firestore, mapId: string): Promise<MapState | null> {
     if (!db) {
@@ -69,7 +124,12 @@ export async function getMapState(db: Firestore, mapId: string): Promise<MapStat
         if (docSnap.exists()) {
             return docSnap.data() as MapState;
         } else {
-            console.log("No such map state document!");
+            // Check in userMaps as well if not found in shared
+            const userDocRef = doc(db, USER_MAPS_COLLECTION, mapId);
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+                return userDocSnap.data() as MapState;
+            }
             return null;
         }
     } catch (error) {
@@ -80,7 +140,6 @@ export async function getMapState(db: Firestore, mapId: string): Promise<MapStat
 
 /**
  * Reads a document for debugging purposes.
- * @param db The Firestore instance.
  */
 export async function debugReadDocument(db: Firestore) {
   if (!db) {
