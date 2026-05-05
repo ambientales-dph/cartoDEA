@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
     });
 
     // 5. Preparar respuesta con redirección y cookie temporal de intercambio
-    // Usamos una cookie para pasar el custom token al frontend de forma segura tras el POST
-    const response = NextResponse.redirect(new URL('/', request.url));
+    // Usamos la variable de entorno NEXT_PUBLIC_BASE_URL para evitar desvíos a IPs internas
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.url;
+    const response = NextResponse.redirect(new URL('/', baseUrl));
     
     response.cookies.set('portal_auth_token', customToken, {
       path: '/',
