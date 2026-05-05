@@ -1,13 +1,21 @@
 // src/app/api/auth/signout/route.ts
+export const dynamic = 'force-dynamic';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * Cierra la sesión en CartoDEA y redirige al usuario de vuelta al Portal DEA.
+ */
 export async function GET(request: NextRequest) {
-  // Clear the session cookie
+  // 1. Limpiar cookies de sesión
   const cookieStore = await cookies();
   cookieStore.delete('session');
+  cookieStore.delete('portal_auth_token');
+  cookieStore.delete('portal_user_picture');
 
-  // Redirect to the home page using absolute URL from environment
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.url;
-  return NextResponse.redirect(new URL('/', baseUrl));
+  // 2. Determinar la URL del Portal DEA para la redirección final
+  // Se usa NEXT_PUBLIC_PORTAL_URL como destino de salida del ecosistema
+  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.minfra.gba.gob.ar';
+  
+  return NextResponse.redirect(portalUrl);
 }

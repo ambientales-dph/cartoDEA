@@ -45,16 +45,16 @@ export async function POST(request: NextRequest) {
     });
 
     // 5. Preparar respuesta con redirección y cookie temporal de intercambio
-    // Usamos la variable de entorno NEXT_PUBLIC_BASE_URL para evitar desvíos a IPs internas
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.url;
-    const response = NextResponse.redirect(new URL('/', baseUrl));
+    // Usamos la variable de entorno NEXT_PUBLIC_BASE_URL de forma absoluta para evitar desvíos
+    const redirectUrl = process.env.NEXT_PUBLIC_BASE_URL || new URL('/', request.url).toString();
+    const response = NextResponse.redirect(redirectUrl);
     
     response.cookies.set('portal_auth_token', customToken, {
       path: '/',
       httpOnly: false, // Permitir que el cliente la lea para el signIn
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60, // Expira en 1 minuto (tiempo suficiente para el handoff)
+      maxAge: 60, // Expira en 1 minuto
     });
 
     // Almacenamos la URL de la imagen de perfil para acceso rápido
@@ -66,7 +66,8 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Portal sync error:', error);
-    // Si hay error durante un form post, redirigir al login del portal con error
-    return NextResponse.redirect(new URL('https://portal.minfra.gba.gob.ar/login?error=sync_failed', request.url));
+    // Si hay error, redirigir al login del portal con error
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.minfra.gba.gob.ar/login';
+    return NextResponse.redirect(`${portalUrl}?error=sync_failed`);
   }
 }
