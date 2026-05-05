@@ -49,17 +49,21 @@ export async function POST(request: NextRequest) {
     const redirectUrl = process.env.NEXT_PUBLIC_BASE_URL || new URL('/', request.url).toString();
     const response = NextResponse.redirect(redirectUrl);
     
+    // Cookie de token (muy corta duración)
     response.cookies.set('portal_auth_token', customToken, {
       path: '/',
-      httpOnly: false, // Permitir que el cliente la lea para el signIn
+      httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60, // Expira en 1 minuto
+      maxAge: 60,
     });
 
-    // Almacenamos la URL de la imagen de perfil para acceso rápido
+    // Almacenamos los datos de perfil para que el frontend actualice el objeto User de Firebase
     if (picture) {
-        response.cookies.set('portal_user_picture', picture, { path: '/', maxAge: 60 * 60 * 24 });
+        response.cookies.set('portal_user_picture', picture, { path: '/', maxAge: 120 });
+    }
+    if (name) {
+        response.cookies.set('portal_user_name', name, { path: '/', maxAge: 120 });
     }
 
     return response;
