@@ -6,7 +6,7 @@ import { useAuth } from '@/firebase/provider';
 import { useToast } from '@/hooks/use-toast';
 
 const TIMEOUT_MS = 15 * 60 * 1000; // 15 Minutes
-const PORTAL_LOGIN_URL = 'https://portal.minfra.gba.gob.ar/login';
+const PORTAL_LOGIN_URL = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.minfra.gba.gob.ar/login';
 
 export function useInactivityTimeout() {
   const auth = useAuth();

@@ -10,7 +10,8 @@ interface AuthGuardProps {
     children: React.ReactNode;
 }
 
-const PORTAL_LOGIN_URL = 'https://portal.minfra.gba.gob.ar/login';
+// Se utiliza la variable de entorno para el destino de autenticación
+const PORTAL_LOGIN_URL = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.minfra.gba.gob.ar/login';
 
 /**
  * Componente que protege las rutas privadas.
