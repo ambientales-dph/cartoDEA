@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import { signInWithCustomToken } from 'firebase/auth';
-import { useAuth } from '@/firebase';
+import { useAuth } from '@/firebase/provider';
 import { useToast } from '@/hooks/use-toast';
 
 export function usePortalAuth() {

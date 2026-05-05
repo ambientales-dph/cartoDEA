@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -108,7 +109,11 @@ import { useOsmQuery } from '@/hooks/osm-integration/useOsmQuery';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { saveMapState, debugReadDocument } from '@/services/sharing-service';
-import { useFirestore, useUser } from '@/firebase';
+
+// Correct explicit imports from sub-paths to avoid Ambiguous resolution with src/firebase.json
+import { useFirestore } from '@/firebase/provider';
+import { useUser } from '@/firebase/auth/use-user';
+
 import GeoJSON from 'ol/format/GeoJSON';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';

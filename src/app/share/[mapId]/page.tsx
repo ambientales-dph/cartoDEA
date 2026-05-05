@@ -3,15 +3,15 @@
 import React, { useState, useEffect, use } from 'react';
 import { getMapState } from '@/services/sharing-service';
 import type { MapState } from '@/lib/types';
-import { useFirestore } from '@/firebase';
+import { useFirestore } from '@/firebase/provider';
 import { Loader2 } from 'lucide-react';
 import { DphLogoIcon } from '@/components/icons/DphLogoIcon';
 import SharedMapClient from '@/components/sharing/SharedMapClient';
 
 interface SharedMapPageProps {
-    params: {
+    params: Promise<{
         mapId: string;
-    };
+    }>;
 }
 
 export default function SharedMapPage({ params }: SharedMapPageProps) {

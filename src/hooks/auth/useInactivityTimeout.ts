@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useAuth } from '@/firebase';
+import { useAuth } from '@/firebase/provider';
 import { useToast } from '@/hooks/use-toast';
 
 const TIMEOUT_MS = 15 * 60 * 1000; // 15 Minutes

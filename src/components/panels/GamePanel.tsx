@@ -1,13 +1,17 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { Swords, User, Loader2 } from 'lucide-react';
 import DraggablePanel from './DraggablePanel';
 import { Button } from '@/components/ui/button';
-import { useAuth, useUser, useFirestore } from '@/firebase';
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { useToast } from '@/hooks/use-toast';
 import { onboardNewAgent } from '@/ai/flows/game-flow';
+
+// Correct explicit imports to avoid collision with src/firebase.json
+import { useFirestore } from '@/firebase/provider';
+import { useUser } from '@/firebase/auth/use-user';
 
 interface GamePanelProps {
   panelRef: React.RefObject<HTMLDivElement>;

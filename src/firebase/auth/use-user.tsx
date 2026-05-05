@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
-import { useAuth } from '..';
+import { useAuth } from '../provider';
 
 /**
  * A hook to get the current user.
