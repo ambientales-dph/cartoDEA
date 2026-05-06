@@ -104,6 +104,11 @@ import { useFirestore } from '@/firebase/provider';
 import { useUser } from '@/firebase/auth/use-user';
 
 import VectorLayer from 'ol/layer/Vector';
+import VectorSource from 'ol/source/Vector';
+import GeoJSON from 'ol/format/GeoJSON';
+import Feature from 'ol/Feature';
+import { Geometry } from 'ol/geom';
+import * as turf from '@turf/turf';
 import { nanoid } from 'nanoid';
 
 import { usePortalAuth } from '@/hooks/auth/usePortalAuth';
@@ -195,6 +200,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [userMapsList, setUserMapsList] = useState<(MapState & { id: string })[]>([]);
   const [isLoadingUserMaps, setIsLoadingUserMaps] = useState(false);
   const [isClientMounted, setIsClientMounted] = useState(false);
+  const [hasPolygonDrawing, setHasPolygonDrawing] = useState(false);
 
   usePortalAuth();
   useInactivityTimeout();
@@ -240,6 +246,23 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         contrast: 100,
     }
   );
+
+  useEffect(() => {
+    if (!isMapReady || !drawingSourceRef.current) return;
+    const source = drawingSourceRef.current;
+    const updateHasPolygon = () => {
+        const polygon = source.getFeatures().find(f => f.getGeometry()?.getType() === 'Polygon');
+        setHasPolygonDrawing(!!polygon);
+    };
+    source.on('addfeature', updateHasPolygon);
+    source.on('removefeature', updateHasPolygon);
+    source.on('clear', updateHasPolygon);
+    return () => {
+        source.un('addfeature', updateHasPolygon);
+        source.un('removefeature', updateHasPolygon);
+        source.un('clear', updateHasPolygon);
+    };
+  }, [isMapReady, drawingSourceRef]);
 
   const handleBaseLayerSettingsChange = useCallback(
     (newSettings: Partial<BaseLayerSettings>) => {
@@ -357,6 +380,101 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     isMapReady,
     onShowTableRequest: handleShowTableRequest,
   });
+
+  const handleExtractBySelection = useCallback(() => {
+    const selected = featureInspectionHook.selectedFeatures;
+    if (selected.length === 0) {
+      toast({ description: "No hay entidades seleccionadas para extraer." });
+      return;
+    }
+
+    const clonedFeatures = selected.map(f => {
+      const clone = f.clone();
+      clone.setId(nanoid());
+      return clone;
+    });
+
+    const layerName = "Selección Extraída";
+    const newLayerId = `extracted-${nanoid()}`;
+    const newSource = new VectorSource({ features: clonedFeatures });
+    const newOlLayer = new VectorLayer({
+      source: newSource,
+      properties: { id: newLayerId, name: layerName, type: 'vector' },
+      style: (selected[0] as any).getStyle() || undefined,
+    });
+
+    layerManagerHook.addLayer({
+      id: newLayerId,
+      name: layerName,
+      olLayer: newOlLayer,
+      visible: true,
+      opacity: 1,
+      type: 'vector',
+    }, true);
+
+    toast({ description: `Se creó una nueva capa con ${clonedFeatures.length} entidades.` });
+  }, [featureInspectionHook.selectedFeatures, layerManagerHook, toast]);
+
+  const handleExtractByPolygon = useCallback((targetLayerId: string) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const targetLayer = map.getAllLayers().find(l => l.get('id') === targetLayerId) as VectorLayer<any> | undefined;
+    const drawingSource = drawingSourceRef.current;
+    const polygonFeature = drawingSource?.getFeatures().find(f => f.getGeometry()?.getType() === 'Polygon');
+
+    if (!targetLayer || !polygonFeature) {
+      toast({ description: "Se requiere una capa vectorial y un polígono dibujado.", variant: "destructive" });
+      return;
+    }
+
+    const targetSource = targetLayer.getSource();
+    if (!targetSource) return;
+
+    toast({ description: "Extrayendo entidades por polígono..." });
+
+    const format = new GeoJSON({ featureProjection: 'EPSG:3857', dataProjection: 'EPSG:4326' });
+    const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
+    
+    const polygonGeoJSON = format.writeFeatureObject(polygonFeature) as turf.Feature<turf.Polygon>;
+    const featuresToExtract: Feature<Geometry>[] = [];
+
+    targetSource.getFeatures().forEach(f => {
+      try {
+          const featureGeoJSON = format.writeFeatureObject(f);
+          if (turf.booleanIntersects(polygonGeoJSON, featureGeoJSON as any) || turf.booleanWithin(featureGeoJSON as any, polygonGeoJSON)) {
+              featuresToExtract.push(f.clone());
+          }
+      } catch (e) {
+          console.warn("Error checking intersection:", e);
+      }
+    });
+
+    if (featuresToExtract.length > 0) {
+      featuresToExtract.forEach(f => f.setId(nanoid()));
+      const layerName = `Extracción de ${targetLayer.get('name')}`;
+      const newLayerId = `extract-poly-${nanoid()}`;
+      const newSource = new VectorSource({ features: featuresToExtract });
+      const newOlLayer = new VectorLayer({
+          source: newSource,
+          properties: { id: newLayerId, name: layerName, type: 'vector' },
+          style: (targetLayer as any).getStyle(),
+      });
+
+      layerManagerHook.addLayer({
+          id: newLayerId,
+          name: layerName,
+          olLayer: newOlLayer,
+          visible: true,
+          opacity: 1,
+          type: 'vector'
+      }, true);
+
+      toast({ description: `Se extrajeron ${featuresToExtract.length} entidades.` });
+    } else {
+      toast({ description: "No se encontraron entidades dentro del área." });
+    }
+  }, [mapRef, drawingSourceRef, layerManagerHook, toast]);
 
   const { handleFetchGeoServerLayers, isFetching: isFetchingDeasLayers } =
     useGeoServerLayers({
@@ -539,8 +657,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onZoomToLayerExtent={layerManagerHook.zoomToLayerExtent}
             onShowLayerTable={layerManagerHook.handleShowLayerTable}
             onShowStatistics={() => togglePanelMinimize('statistics')}
-            onExtractByPolygon={() => {}}
-            onExtractBySelection={() => {}}
+            onExtractByPolygon={handleExtractByPolygon}
+            onExtractBySelection={handleExtractBySelection}
             onSelectByLayer={featureInspectionHook.selectByLayer}
             onExportLayer={() => {}}
             onExportWmsAsGeotiff={() => {}}
@@ -559,7 +677,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onRenameGroup={() => {}}
             onToggleGroupPlayback={() => {}}
             onSetGroupPlaySpeed={() => {}}
-            isDrawingSourceEmptyOrNotPolygon={true}
+            isDrawingSourceEmptyOrNotPolygon={!hasPolygonDrawing}
             isSelectionEmpty={featureInspectionHook.selectedFeatures.length === 0}
             onSetLayerOpacity={layerManagerHook.setLayerOpacity}
             onReorderLayers={() => {}}
@@ -693,7 +811,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { layerManagerHook.removeLayers(layers.map(l => l.id)); setIsConfirmNewMapOpen(false); }}>Confirmar</AlertDialogAction>
+            <AlertDialogAction onClick={() => { layerManagerHook.removeLayers(layerManagerHook.layers.map(l => l.id)); setIsConfirmNewMapOpen(false); }}>Confirmar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
