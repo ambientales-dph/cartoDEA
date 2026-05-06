@@ -219,6 +219,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
 
   const { toast } = useToast();
   const [activeTool, setActiveTool] = useState<ActiveTool>({ type: null, id: null });
+  const lastActiveToolRef = useRef<ActiveTool>({ type: null, id: null });
 
   const { panels, handlePanelMouseDown, togglePanelCollapse, togglePanelMinimize } =
     useFloatingPanels({
@@ -347,6 +348,34 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       return tool;
     });
   }, []);
+
+  // RIGHT-CLICK TOGGLE LOGIC
+  useEffect(() => {
+    if (activeTool.type !== null) {
+      lastActiveToolRef.current = activeTool;
+    }
+  }, [activeTool]);
+
+  useEffect(() => {
+    if (!isMapReady) return;
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      if (lastActiveToolRef.current.type) {
+          handleSetActiveTool(lastActiveToolRef.current);
+      }
+    };
+
+    const mapEl = mapElementRef.current;
+    if (mapEl) {
+      mapEl.addEventListener('contextmenu', handleContextMenu);
+    }
+    return () => {
+      if (mapEl) {
+        mapEl.removeEventListener('contextmenu', handleContextMenu);
+      }
+    };
+  }, [isMapReady, handleSetActiveTool, mapElementRef]);
 
   const featureInspectionHook = useFeatureInspection({
     mapRef,
