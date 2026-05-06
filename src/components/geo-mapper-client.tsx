@@ -533,7 +533,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       },
     });
 
-  const wfsLibraryHook = useWfsLibrary({
+  const wfsLibraryPanelProps = useWfsLibrary({
     onAddLayer: (name, title, url, bbox, style) => layerManagerHook.handleAddHybridLayer(name, title, url, bbox, style),
   });
 
@@ -720,14 +720,14 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onApplyCategorizedSymbology={layerManagerHook.applyCategorizedSymbology}
             onApplyGeoTiffStyle={layerManagerHook.onApplyGeoTiffStyle}
             onToggleWmsStyle={layerManagerHook.onToggleWmsStyle}
-            onGroupLayers={() => {}}
-            onToggleGroupVisibility={() => {}}
-            onToggleGroupExpanded={() => {}}
-            onSetGroupDisplayMode={() => {}}
-            onUngroup={() => {}}
-            onRenameGroup={() => {}}
-            onToggleGroupPlayback={() => {}}
-            onSetGroupPlaySpeed={() => {}}
+            onGroupLayers={layerManagerHook.groupLayers}
+            onToggleGroupVisibility={layerManagerHook.toggleGroupVisibility}
+            onToggleGroupExpanded={layerManagerHook.toggleGroupExpanded}
+            onSetGroupDisplayMode={layerManagerHook.setGroupDisplayMode}
+            onUngroup={layerManagerHook.ungroup}
+            onRenameGroup={layerManagerHook.renameGroup}
+            onToggleGroupPlayback={layerManagerHook.toggleGroupPlayback}
+            onSetGroupPlaySpeed={layerManagerHook.setGroupPlaySpeed}
             isDrawingSourceEmptyOrNotPolygon={!hasPolygonDrawing}
             isSelectionEmpty={featureInspectionHook.selectedFeatures.length === 0}
             onSetLayerOpacity={layerManagerHook.setLayerOpacity}

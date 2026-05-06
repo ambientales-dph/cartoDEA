@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { Map } from 'ol';
 import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
@@ -51,6 +51,7 @@ export const useLayerManager = ({
   const [layers, setLayersInternal] = useState<(MapLayer | LayerGroup)[]>([]);
   const { toast } = useToast();
   const [lastRemovedLayers, setLastRemovedLayers] = useState<(MapLayer | LayerGroup)[]>([]);
+  const playbackIntervalsRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   // --- Style Factory ---
   const createLayerStyle = useCallback((layer: MapLayer) => {
@@ -185,7 +186,13 @@ export const useLayerManager = ({
       setLayers(prev => {
           const toRemove = prev.filter(i => ids.includes(i.id));
           toRemove.forEach(item => {
-              if('layers' in item) item.layers.forEach(l => mapRef.current?.removeLayer(l.olLayer));
+              if('layers' in item) {
+                  item.layers.forEach(l => mapRef.current?.removeLayer(l.olLayer));
+                  if (playbackIntervalsRef.current[item.id]) {
+                      clearInterval(playbackIntervalsRef.current[item.id]);
+                      delete playbackIntervalsRef.current[item.id];
+                  }
+              }
               else mapRef.current?.removeLayer(item.olLayer);
           });
           setLastRemovedLayers(prevRemoved => [...prevRemoved, ...toRemove]);
@@ -196,11 +203,33 @@ export const useLayerManager = ({
   const toggleLayerVisibility = useCallback((id: string, groupId?: string) => {
       setLayers(prev => prev.map(item => {
           if (item.id === id) {
-              const currentItem = item as any;
-              const newVis = !('layers' in item ? item.layers[0].visible : item.visible);
-              if('layers' in item) item.layers.forEach(l => l.olLayer.setVisible(newVis));
-              else item.olLayer.setVisible(newVis);
+              const currentItem = item as MapLayer;
+              const newVis = !currentItem.visible;
+              currentItem.olLayer.setVisible(newVis);
               return { ...item, visible: newVis };
+          }
+          
+          if (groupId && 'layers' in item && item.id === groupId) {
+              if (item.displayMode === 'single') {
+                  // Radio button logic
+                  const updatedLayers = item.layers.map(l => {
+                      const isTarget = l.id === id;
+                      l.olLayer.setVisible(isTarget);
+                      return { ...l, visible: isTarget };
+                  });
+                  return { ...item, layers: updatedLayers };
+              } else {
+                  // Checkbox logic
+                  const updatedLayers = item.layers.map(l => {
+                      if (l.id === id) {
+                          const newVis = !l.visible;
+                          l.olLayer.setVisible(newVis);
+                          return { ...l, visible: newVis };
+                      }
+                      return l;
+                  });
+                  return { ...item, layers: updatedLayers };
+              }
           }
           return item;
       }));
@@ -212,6 +241,20 @@ export const useLayerManager = ({
             if('layers' in item) item.layers.forEach(l => l.olLayer.setOpacity(opacity));
             else item.olLayer.setOpacity(opacity);
             return { ...item, opacity };
+        }
+        // Search inside groups
+        if ('layers' in item) {
+            const hasLayer = item.layers.some(l => l.id === id);
+            if (hasLayer) {
+                const updatedLayers = item.layers.map(l => {
+                    if (l.id === id) {
+                        l.olLayer.setOpacity(opacity);
+                        return { ...l, opacity };
+                    }
+                    return l;
+                });
+                return { ...item, layers: updatedLayers };
+            }
         }
         return item;
     }));
@@ -239,47 +282,76 @@ export const useLayerManager = ({
 
   const changeLayerStyle = useCallback((layerId: string, styleOptions: StyleOptions) => {
     setLayers(prev => prev.map(item => {
-      if (item.id === layerId && !('layers' in item)) {
-        const updatedLayer = { ...item, simpleStyle: styleOptions };
-        if (updatedLayer.olLayer instanceof VectorLayer) {
-           updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
+      // Find layer at root or inside group
+      if (!('layers' in item)) {
+        if (item.id === layerId) {
+            const updatedLayer = { ...item, simpleStyle: styleOptions };
+            if (updatedLayer.olLayer instanceof VectorLayer) {
+               updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
+            }
+            return updatedLayer;
         }
-        return updatedLayer;
+        return item;
+      } else {
+        const updatedLayers = item.layers.map(l => {
+            if (l.id === layerId) {
+                const updated = { ...l, simpleStyle: styleOptions };
+                if (updated.olLayer instanceof VectorLayer) {
+                   updated.olLayer.setStyle(createLayerStyle(updated));
+                }
+                return updated;
+            }
+            return l;
+        });
+        return { ...item, layers: updatedLayers };
       }
-      return item;
     }));
   }, [setLayers, createLayerStyle]);
 
   const applyGraduatedSymbology = useCallback((layerId: string, symbology: GraduatedSymbology) => {
     setLayers(prev => prev.map(item => {
-      if (item.id === layerId && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-        const updatedLayer = { ...item, graduatedSymbology: symbology };
-        updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
-        return updatedLayer;
-      }
-      return item;
+        const updateLayer = (l: MapLayer) => {
+            if (l.id === layerId && l.olLayer instanceof VectorLayer) {
+                const updated = { ...l, graduatedSymbology: symbology };
+                l.olLayer.setStyle(createLayerStyle(updated));
+                return updated;
+            }
+            return l;
+        };
+        
+        if (!('layers' in item)) return updateLayer(item);
+        return { ...item, layers: item.layers.map(updateLayer) };
     }));
   }, [setLayers, createLayerStyle]);
 
   const applyCategorizedSymbology = useCallback((layerId: string, symbology: CategorizedSymbology) => {
     setLayers(prev => prev.map(item => {
-      if (item.id === layerId && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-        const updatedLayer = { ...item, categorizedSymbology: symbology };
-        updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
-        return updatedLayer;
-      }
-      return item;
+        const updateLayer = (l: MapLayer) => {
+            if (l.id === layerId && l.olLayer instanceof VectorLayer) {
+                const updated = { ...l, categorizedSymbology: symbology };
+                l.olLayer.setStyle(createLayerStyle(updated));
+                return updated;
+            }
+            return l;
+        };
+        
+        if (!('layers' in item)) return updateLayer(item);
+        return { ...item, layers: item.layers.map(updateLayer) };
     }));
   }, [setLayers, createLayerStyle]);
 
   const onChangeLayerLabels = useCallback((id: string, options: LabelOptions) => {
     setLayers(prev => prev.map(item => {
-        if (item.id === id && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-            const updatedLayer = { ...item, labelOptions: options };
-            updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
-            return updatedLayer;
-        }
-        return item;
+        const updateLayer = (l: MapLayer) => {
+            if (l.id === id && l.olLayer instanceof VectorLayer) {
+                const updated = { ...l, labelOptions: options };
+                l.olLayer.setStyle(createLayerStyle(updated));
+                return updated;
+            }
+            return l;
+        };
+        if (!('layers' in item)) return updateLayer(item);
+        return { ...item, layers: item.layers.map(updateLayer) };
     }));
   }, [setLayers, createLayerStyle]);
 
@@ -291,6 +363,148 @@ export const useLayerManager = ({
         onShowTableRequest(plainData, layer.name, layer.id);
     }
   }, [layers, onShowTableRequest]);
+
+  const groupLayers = useCallback((layerIds: string[], groupName: string) => {
+    setLayers(prev => {
+        const itemsToGroup = prev.filter(i => layerIds.includes(i.id) && !('layers' in i)) as MapLayer[];
+        if (itemsToGroup.length < 2) return prev;
+
+        const groupId = `group-${nanoid()}`;
+        const newGroup: LayerGroup = {
+            id: groupId,
+            name: groupName,
+            layers: itemsToGroup.map(l => ({ ...l, groupId })),
+            isExpanded: true,
+            displayMode: 'multiple'
+        };
+
+        const firstIndex = prev.findIndex(i => layerIds.includes(i.id));
+        const result = prev.filter(i => !layerIds.includes(i.id));
+        result.splice(firstIndex, 0, newGroup);
+        return result;
+    });
+  }, [setLayers]);
+
+  const toggleGroupVisibility = useCallback((groupId: string) => {
+    setLayers(prev => prev.map(item => {
+        if ('layers' in item && item.id === groupId) {
+            const isAnyVisible = item.layers.some(l => l.visible);
+            const newVis = !isAnyVisible;
+            item.layers.forEach(l => {
+                l.visible = newVis;
+                l.olLayer.setVisible(newVis);
+            });
+            return { ...item };
+        }
+        return item;
+    }));
+  }, [setLayers]);
+
+  const toggleGroupExpanded = useCallback((groupId: string) => {
+    setLayers(prev => prev.map(item => {
+        if ('layers' in item && item.id === groupId) {
+            return { ...item, isExpanded: !item.isExpanded };
+        }
+        return item;
+    }));
+  }, [setLayers]);
+
+  const setGroupDisplayMode = useCallback((groupId: string, mode: 'single' | 'multiple') => {
+    setLayers(prev => prev.map(item => {
+        if ('layers' in item && item.id === groupId) {
+            if (mode === 'single') {
+                // Ensure only one is visible
+                item.layers.forEach((l, idx) => {
+                    const vis = idx === 0;
+                    l.visible = vis;
+                    l.olLayer.setVisible(vis);
+                });
+            }
+            return { ...item, displayMode: mode };
+        }
+        return item;
+    }));
+  }, [setLayers]);
+
+  const ungroup = useCallback((groupId: string) => {
+      setLayers(prev => {
+          const groupIndex = prev.findIndex(i => i.id === groupId);
+          if (groupIndex === -1) return prev;
+          
+          const item = prev[groupIndex] as LayerGroup;
+          const layers = item.layers.map(l => {
+              const { groupId, ...rest } = l;
+              return rest as MapLayer;
+          });
+          
+          const result = [...prev];
+          result.splice(groupIndex, 1, ...layers);
+          return result;
+      });
+  }, [setLayers]);
+
+  const toggleGroupPlayback = useCallback((groupId: string) => {
+    setLayers(prev => prev.map(item => {
+        if ('layers' in item && item.id === groupId) {
+            const isPlaying = !item.isPlaying;
+            
+            if (playbackIntervalsRef.current[groupId]) {
+                clearInterval(playbackIntervalsRef.current[groupId]);
+                delete playbackIntervalsRef.current[groupId];
+            }
+
+            if (isPlaying && item.layers.length > 1) {
+                const speed = item.playSpeed || 1000;
+                playbackIntervalsRef.current[groupId] = setInterval(() => {
+                    setLayers(pLayers => pLayers.map(pItem => {
+                        if ('layers' in pItem && pItem.id === groupId) {
+                            const currentIndex = pItem.layers.findIndex(l => l.visible);
+                            const nextIndex = (currentIndex + 1) % pItem.layers.length;
+                            
+                            pItem.layers.forEach((l, idx) => {
+                                const vis = idx === nextIndex;
+                                l.visible = vis;
+                                l.olLayer.setVisible(vis);
+                            });
+                        }
+                        return pItem;
+                    }));
+                }, speed);
+            }
+            
+            return { ...item, isPlaying };
+        }
+        return item;
+    }));
+  }, [setLayers]);
+
+  const setGroupPlaySpeed = useCallback((groupId: string, speed: number) => {
+    setLayers(prev => prev.map(item => {
+        if ('layers' in item && item.id === groupId) {
+            const wasPlaying = item.isPlaying;
+            if (wasPlaying) {
+                // Restart interval with new speed
+                if (playbackIntervalsRef.current[groupId]) clearInterval(playbackIntervalsRef.current[groupId]);
+                playbackIntervalsRef.current[groupId] = setInterval(() => {
+                    setLayers(pLayers => pLayers.map(pItem => {
+                        if ('layers' in pItem && pItem.id === groupId) {
+                            const currentIndex = pItem.layers.findIndex(l => l.visible);
+                            const nextIndex = (currentIndex + 1) % pItem.layers.length;
+                            pItem.layers.forEach((l, idx) => {
+                                const vis = idx === nextIndex;
+                                l.visible = vis;
+                                l.olLayer.setVisible(vis);
+                            });
+                        }
+                        return pItem;
+                    }));
+                }, speed);
+            }
+            return { ...item, playSpeed: speed };
+        }
+        return item;
+    }));
+  }, [setLayers]);
 
   const undoRemove = useCallback(() => {
     if (lastRemovedLayers.length > 0) {
@@ -326,6 +540,13 @@ export const useLayerManager = ({
       return null;
   }, [addLayer]);
 
+  // Clean up intervals on unmount
+  useEffect(() => {
+    return () => {
+        Object.values(playbackIntervalsRef.current).forEach(clearInterval);
+    };
+  }, []);
+
   return {
     layers,
     addLayer,
@@ -348,5 +569,13 @@ export const useLayerManager = ({
     handleAddHybridLayer,
     addGeeLayerToMap,
     reorderLayers,
+    groupLayers,
+    toggleGroupVisibility,
+    toggleGroupExpanded,
+    setGroupDisplayMode,
+    ungroup,
+    renameGroup: (id: string, name: string) => setLayers(prev => prev.map(i => i.id === id ? { ...i, name } : i)),
+    toggleGroupPlayback,
+    setGroupPlaySpeed,
   };
 };
