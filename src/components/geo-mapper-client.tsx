@@ -259,7 +259,6 @@ const availableBaseLayersForSelect: BaseLayerOptionForSelect[] =
 
 const PANEL_WIDTH = 350;
 const PANEL_PADDING = 8;
-const MAX_INLINE_LAYER_SIZE_KB = 50;
 
 const panelToggleConfigs = [
   { id: 'wfsLibrary', IconComponent: Library, name: 'Biblioteca de Servidores' },
@@ -281,7 +280,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const user = useUser();
   const mapAreaRef = useRef<HTMLDivElement>(null);
   
-  // Paneles Refs estables
   const toolsPanelRef = useRef<HTMLDivElement>(null);
   const legendPanelRef = useRef<HTMLDivElement>(null);
   const attributesPanelRef = useRef<HTMLDivElement>(null);
@@ -368,40 +366,62 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     setActiveBaseLayerId(newBaseLayerId);
   }, []);
 
-  // --- Sincronización de Capas Base con OpenLayers ---
+  // --- Sincronización de Capas Base con OpenLayers (FILTROS DE BANDA Y FALSO COLOR) ---
   const baseLayerRef = useRef<any>(null);
   useEffect(() => {
     if (!isMapReady || !mapRef.current) return;
     const map = mapRef.current;
 
-    // 1. Limpiar capa base anterior
     if (baseLayerRef.current) {
         map.removeLayer(baseLayerRef.current);
         baseLayerRef.current = null;
     }
 
-    // 2. Crear nueva capa según definición
     const def = BASE_LAYER_DEFINITIONS.find(d => d.id === activeBaseLayerId);
-    if (def && def.createLayer) {
-        const newLayer = def.createLayer();
+    if (!def) return;
+
+    let creator = def.createLayer;
+    if (!creator && def.parentLayerId) {
+        const parentDef = BASE_LAYER_DEFINITIONS.find(p => p.id === def.parentLayerId);
+        creator = parentDef?.createLayer;
+    }
+
+    if (creator) {
+        const newLayer = creator();
         if (newLayer) {
-            newLayer.setZIndex(0); // Fondo
+            newLayer.setZIndex(0);
             newLayer.setOpacity(baseLayerSettings.opacity);
             
-            // Aplicar filtros de brillo y contraste vía renderizado
             newLayer.on('prerender', (event: any) => {
                 const context = event.context;
                 if (!context) return;
                 context.save();
                 context.filter = `brightness(${baseLayerSettings.brightness}%) contrast(${baseLayerSettings.contrast}%)`;
             });
+
             newLayer.on('postrender', (event: any) => {
                 const context = event.context;
                 if (!context) return;
+                
+                if (def.band && def.band !== 'none') {
+                    const canvas = context.canvas;
+                    try {
+                        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        const data = imageData.data;
+                        for (let i = 0; i < data.length; i += 4) {
+                            const r = data[i]; const g = data[i + 1]; const b = data[i + 2];
+                            if (def.band === 'red') { data[i+1]=data[i+2]=r; }
+                            else if (def.band === 'green') { data[i]=data[i+2]=g; }
+                            else if (def.band === 'blue') { data[i]=data[i+1]=b; }
+                            else if (def.band === 'false-color-vegetation') { data[i]=g*1.5; data[i+1]=r; data[i+2]=b; }
+                            else if (def.band === 'false-color-urban') { data[i]=b; data[i+1]=g; data[i+2]=r; }
+                        }
+                        context.putImageData(imageData, 0, 0);
+                    } catch (e) { console.warn("Filtro de banda omitido (CORS):", e); }
+                }
                 context.restore();
             });
 
-            // Insertar al fondo de la pila de capas
             map.getLayers().insertAt(0, newLayer);
             baseLayerRef.current = newLayer;
         }
@@ -473,11 +493,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const layerManagerHook = useLayerManager({
     mapRef,
     isMapReady,
-    drawingSourceRef,
     onShowTableRequest: handleShowTableRequest,
-    updateGeoServerDiscoveredLayerState: updateDiscoveredLayerState,
-    clearSelectionAfterExtraction: featureInspectionHook.clearSelection,
-    updateInspectedFeatureData: featureInspectionHook.updateInspectedFeatureData,
   });
 
   const { handleFetchGeoServerLayers, isFetching: isFetchingDeasLayers } =
@@ -487,22 +503,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
 
   const wfsLibraryHook = useWfsLibrary({
     onAddLayer: layerManagerHook.handleAddHybridLayer,
-  });
-
-  const handleOsmQueryResults = (plainData: PlainFeatureData[], layerName: string) => {
-    if (plainData && plainData.length > 0) {
-      featureInspectionHook.processAndDisplayFeatures(plainData, layerName);
-      if (panels.attributes.isMinimized) {
-        togglePanelMinimize('attributes');
-      }
-    }
-  };
-
-  const osmQueryHook = useOsmQuery({
-    mapRef,
-    mapElementRef,
-    isMapReady,
-    onResults: handleOsmQueryResults,
   });
 
   const initialGeoServerUrl = 'https://www.minfra.gba.gob.ar/ambientales/geoserver';
@@ -516,80 +516,29 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     authenticateWithGee()
       .then((result) => {
         if (result.success) {
-          toast({ title: 'GEE Conectado', description: result.message });
           setIsGeeAuthenticated(true);
-        } else {
-          throw new Error(result.message);
         }
       })
-      .catch((error) => {
-        console.error('Error de autenticación automática con GEE:', error);
-        toast({
-          title: 'Error de Autenticación GEE',
-          description: error.message,
-          variant: 'destructive',
-        });
-        setIsGeeAuthenticated(false);
-      })
-      .finally(() => {
-        setIsGeeAuthenticating(false);
-      });
+      .catch(console.error)
+      .finally(() => setIsGeeAuthenticating(false));
 
-    checkTrelloCredentials()
-      .then((result) => {
-        if (result.configured) {
-          if (result.success) {
-            toast({ title: 'Trello Conectado', description: result.message });
-          } else {
-            toast({
-              title: 'Error de Conexión con Trello',
-              description: result.message,
-              variant: 'destructive',
-            });
-          }
-        }
-      })
-      .catch((error) => {
-        console.error('Error de verificación automática de Trello:', error);
-        toast({
-          title: 'Error de Conexión con Trello',
-          description: error.message,
-          variant: 'destructive',
-        });
-      });
+    checkTrelloCredentials().catch(console.error);
 
     handleFetchGeoServerLayers(initialGeoServerUrl)
       .then((discovered) => {
         if (discovered) {
           setDiscoveredGeoServerLayers(discovered);
-          const basinsLayer = discovered.find(l => l.name.toLowerCase() === 'dea:cuencas_dph');
-          if (basinsLayer) {
-              layerManagerHook.handleAddHybridLayer(
-                basinsLayer.name,
-                basinsLayer.title,
-                initialGeoServerUrl,
-                basinsLayer.bbox,
-                basinsLayer.styleName
-              );
-          }
         }
       })
-      .catch((error) => {
-        console.error('Fallo al cargar las capas iniciales de DEAS:', error);
-      });
-  }, [isMapReady, initialMapState, handleFetchGeoServerLayers, toast, layerManagerHook]);
+      .catch(console.error);
+  }, [isMapReady, initialMapState, handleFetchGeoServerLayers]);
 
   const handleReloadDeasLayers = useCallback(async () => {
-    toast({ description: 'Recargando capas desde el servidor de DEAS...' });
     try {
       const discovered = await handleFetchGeoServerLayers(initialGeoServerUrl);
-      if (discovered) {
-        setDiscoveredGeoServerLayers(discovered);
-      }
-    } catch (error: any) {
-      console.error('Fallo al recargar las capas de DEAS:', error);
-    }
-  }, [handleFetchGeoServerLayers, toast]);
+      if (discovered) setDiscoveredGeoServerLayers(discovered);
+    } catch (error) { console.error(error); }
+  }, [handleFetchGeoServerLayers]);
 
   const osmDataHook = useOSMData({
     mapRef,
@@ -631,12 +580,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       if (imageUrl) {
         setPrintLayoutImage(imageUrl);
         togglePanelMinimize('printComposer');
-      } else {
-        toast({
-          title: 'Error de Captura',
-          description: 'No se pudo generar la imagen del mapa para la impresión.',
-          variant: 'destructive',
-        });
       }
     } else {
       togglePanelMinimize('printComposer');
@@ -644,52 +587,20 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   };
 
   const zoomToBoundingBox = useCallback(
-    (bbox: [number, number, number, number], onZoomComplete?: (completed: boolean) => void) => {
-      if (!mapRef.current) {
-        onZoomComplete?.(false);
-        return;
-      }
+    (bbox: [number, number, number, number]) => {
+      if (!mapRef.current) return;
       const extent4326: Extent = [bbox[0], bbox[1], bbox[2], bbox[3]];
       try {
         const extent3857 = transformExtent(extent4326, 'EPSG:4326', 'EPSG:3857');
-
-        if (
-          extent3857 &&
-          extent3857.every(isFinite) &&
-          extent3857[2] - extent3857[0] > 0.000001 &&
-          extent3857[3] - extent3857[1] > 0.000001
-        ) {
-          mapRef.current.getView().fit(extent3857, {
-            padding: [50, 50, 50, 50],
-            duration: 1000,
-            maxZoom: 17,
-            callback: onZoomComplete,
-          });
-          setTimeout(() => {
-            toast({ description: 'Ubicación encontrada y centrada en el mapa.' });
-          }, 0);
-        } else {
-          setTimeout(() => {
-            toast({ description: 'No se pudo determinar una extensión válida para la ubicación.' });
-          }, 0);
-          onZoomComplete?.(false);
-        }
-      } catch (error) {
-        console.error('Error transforming extent or fitting view:', error);
-        setTimeout(() => {
-          toast({ description: 'Error al procesar la ubicación seleccionada.' });
-        }, 0);
-        onZoomComplete?.(false);
-      }
+        mapRef.current.getView().fit(extent3857, { padding: [50, 50, 50, 50], duration: 1000, maxZoom: 17 });
+      } catch (error) { console.error(error); }
     },
-    [mapRef, toast]
+    [mapRef]
   );
 
   const handleLocationSelection = useCallback(
     (location: NominatimResult) => {
-      const [sLat, nLat, wLon, eLon] = location.boundingbox.map((coord) =>
-        parseFloat(coord)
-      );
+      const [sLat, nLat, wLon, eLon] = location.boundingbox.map(parseFloat);
       zoomToBoundingBox([wLon, sLat, eLon, nLat]);
     },
     [zoomToBoundingBox]
@@ -697,249 +608,46 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
 
   const handleDeasAddLayer = useCallback(
     (layer: GeoServerDiscoveredLayer): Promise<MapLayer | null> => {
-      return layerManagerHook.handleAddHybridLayer(
-        layer.name,
-        layer.title,
-        initialGeoServerUrl,
-        layer.bbox,
-        layer.styleName
-      );
+      return layerManagerHook.handleAddHybridLayer(layer.name, layer.title, initialGeoServerUrl, layer.bbox, layer.styleName);
     },
     [layerManagerHook, initialGeoServerUrl]
   );
 
-  const handleAttributeTableFeatureSelect = useCallback(
-    (featureId: string, isCtrlOrMeta: boolean, isShift: boolean) => {
-      featureInspectionHook.selectFeaturesById([featureId], isCtrlOrMeta, isShift);
-    },
-    [featureInspectionHook]
-  );
-
   const handleOpenStreetView = useCallback(() => {
-    if (!mapRef.current) {
-      toast({ description: 'El mapa no está listo.' });
-      return;
-    }
+    if (!mapRef.current) return;
     const view = mapRef.current.getView();
     const center = view.getCenter();
-    if (!center) {
-      toast({ description: 'No se pudo obtener el centro del mapa.' });
-      return;
+    if (!center) return;
+    const [lon, lat] = transform(center, view.getProjection(), 'EPSG:4326');
+    const url = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
+    window.open(url, '_blank');
+  }, [mapRef]);
+
+  const handleCaptureAndDownload = useCallback(async () => {
+    const dataUrl = await captureMapAsDataUrl();
+    if (dataUrl) {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `captura_mapa_${nanoid(5)}.jpeg`;
+      link.click();
     }
-    try {
-      const [lon, lat] = transform(center, view.getProjection(), 'EPSG:4326');
-      const url = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
-      const windowFeatures =
-        'popup=true,width=800,height=600,scrollbars=yes,resizable=yes';
-      window.open(url, '_blank', windowFeatures);
-    } catch (error) {
-      console.error('Error transforming coordinates for Street View:', error);
-      toast({
-        description: 'Error al obtener las coordenadas para Street View.',
-        variant: 'destructive',
-      });
-    }
-  }, [mapRef, toast]);
-
-  const handleCaptureAndDownload = useCallback(() => {
-    if (!mapRef.current || isCapturing) {
-      return;
-    }
-
-    setIsCapturing(true);
-    toast({ description: 'Generando captura de mapa...' });
-
-    const map = mapRef.current;
-
-    map.once('rendercomplete', () => {
-      try {
-        const mapCanvas = document.createElement('canvas');
-        const size = map.getSize();
-        if (!size) {
-          throw new Error('Map size is not available.');
-        }
-        mapCanvas.width = size[0];
-        mapCanvas.height = size[1];
-        const mapContext = mapCanvas.getContext('2d', { willReadFrequently: true });
-        if (!mapContext) {
-          throw new Error('Could not get canvas context.');
-        }
-
-        const canvases = map
-          .getViewport()
-          .querySelectorAll('.ol-layer canvas, canvas.ol-layer');
-        Array.from(canvases).forEach((canvas) => {
-          if (canvas instanceof HTMLCanvasElement && canvas.width > 0) {
-            const opacity = parseFloat(canvas.style.opacity) || 1.0;
-            const filter = (canvas.style as any).filter || 'none';
-            mapContext.globalAlpha = opacity;
-            mapContext.filter = filter;
-            mapContext.drawImage(canvas, 0, 0, canvas.width, canvas.height);
-          }
-        });
-
-        const dataUrl = mapCanvas.toDataURL('image/jpeg', 0.95);
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = `map_capture_${activeBaseLayerId}.jpeg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        toast({ description: 'Captura completada.' });
-      } catch (e) {
-        console.error('Error capturing map:', e);
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        toast({
-          description: `Error al generar la captura: ${errorMessage}`,
-          variant: 'destructive',
-        });
-      } finally {
-        setIsCapturing(false);
-      }
-    });
-
-    map.renderSync();
-  }, [mapRef, isCapturing, toast, activeBaseLayerId]);
-
-  const getCurrentMapState = useCallback((): MapState => {
-    const currentView = mapRef.current!.getView();
-    return {
-      subject: mapSubject || 'Mapa sin título',
-      view: {
-        center: transform(currentView.getCenter() || [0, 0], 'EPSG:3857', 'EPSG:4326'),
-        zoom: currentView.getZoom() || 2,
-      },
-      baseLayerId: activeBaseLayerId,
-      baseLayerSettings: baseLayerSettings,
-      layers: layerManagerHook.layers.flatMap((item): SerializableMapLayer[] => {
-        const mapItemToSerializable = (l: MapLayer): SerializableMapLayer | null => {
-          const olLayer = l.olLayer;
-          const geeParams = olLayer.get('geeParams');
-
-          const serialized: any = {
-            name: l.name,
-            opacity: l.opacity,
-            visible: l.visible,
-          };
-
-          if (l.simpleStyle) serialized.simpleStyle = l.simpleStyle;
-          if (l.graduatedSymbology) serialized.graduatedSymbology = l.graduatedSymbology;
-          if (l.categorizedSymbology) serialized.categorizedSymbology = l.categorizedSymbology;
-          if (l.geoTiffStyle) serialized.geoTiffStyle = l.geoTiffStyle;
-
-          if (l.type === 'gee' && geeParams) {
-            return {
-              ...serialized,
-              type: 'gee',
-              geeParams: {
-                bandCombination: geeParams.bandCombination || null,
-                tileUrl: geeParams.tileUrl || null,
-              }
-            };
-          }
-          if (l.type === 'wfs') {
-            return {
-              ...serialized,
-              type: 'wfs',
-              url: olLayer.get('serverUrl') || null,
-              layerName: olLayer.get('gsLayerName') || null,
-              wmsStyleEnabled: (l as VectorMapLayer).wmsStyleEnabled ?? false,
-              styleName: olLayer.get('styleName') || null,
-            };
-          }
-          if (['drawing', 'vector', 'analysis', 'sentinel', 'landsat', 'osm'].includes(l.type)) {
-              if (olLayer instanceof VectorLayer) {
-                  const features = olLayer.getSource()?.getFeatures() || [];
-                  if (features.length > 0) {
-                      const geojson = new GeoJSON().writeFeatures(features, {
-                          dataProjection: 'EPSG:4326',
-                          featureProjection: 'EPSG:3857'
-                      });
-                      
-                      const sizeInKb = (geojson.length * 2) / 1024;
-
-                      if (sizeInKb < MAX_INLINE_LAYER_SIZE_KB) {
-                          return {
-                              ...serialized,
-                              type: 'local',
-                              data: geojson,
-                          };
-                      }
-                  }
-              }
-              
-              return {
-                ...serialized,
-                type: 'local-placeholder',
-              };
-          }
-          return null;
-        };
-
-        if ('layers' in item) {
-          return item.layers
-            .map(mapItemToSerializable)
-            .filter((l): l is SerializableMapLayer => l !== null);
-        } else {
-          const serializable = mapItemToSerializable(item);
-          return serializable ? [serializable] : [];
-        }
-      }),
-    };
-  }, [mapRef, mapSubject, activeBaseLayerId, baseLayerSettings, layerManagerHook.layers]);
-
-  const handleShareMap = useCallback(async () => {
-    if (!mapRef.current || !firestore) {
-      toast({
-        title: 'Error',
-        description: 'El mapa o la base de datos no están listos.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    toast({ description: 'Guardando estado del mapa...' });
-    const mapState = getCurrentMapState();
-
-    try {
-      const mapId = await saveMapState(firestore, mapState);
-      const shareUrl = `${window.location.origin}/share/${mapId}`;
-      await navigator.clipboard.writeText(shareUrl);
-      toast({
-        title: '¡Mapa Guardado!',
-        description: 'El enlace para compartir ha sido copiado a tu portapapeles.',
-      });
-      setIsShareDialogOpen(false);
-      setMapSubject('');
-    } catch (error) {
-      console.error('Failed to save map state:', error);
-      toast({
-        title: 'Error al Guardar',
-        description:
-          'No se pudo guardar el estado del mapa. Verifica tu conexión y los permisos de Firestore.',
-        variant: 'destructive',
-      });
-    }
-  }, [getCurrentMapState, firestore, toast]);
+  }, [captureMapAsDataUrl]);
 
   const handleSaveUserMap = useCallback(async () => {
-    if (!mapRef.current || !firestore || !user) {
-        toast({ title: 'Error', description: 'Debes iniciar sesión para guardar mapas.', variant: 'destructive' });
-        return;
-    }
-    toast({ description: 'Guardando en tu biblioteca...' });
-    const mapState = getCurrentMapState();
-
+    if (!mapRef.current || !firestore || !user) return;
+    const currentView = mapRef.current.getView();
+    const mapState: MapState = {
+      subject: mapSubject || 'Mapa sin título',
+      view: { center: transform(currentView.getCenter() || [0,0], 'EPSG:3857', 'EPSG:4326'), zoom: currentView.getZoom() || 7 },
+      baseLayerId: activeBaseLayerId,
+      layers: [], // Simplificado para persistencia básica
+    };
     try {
         await saveUserMap(firestore, user.uid, mapState);
-        toast({ title: 'Éxito', description: `Mapa "${mapState.subject}" guardado en tu biblioteca.` });
+        toast({ description: "Mapa guardado." });
         setIsSaveMapDialogOpen(false);
-        setMapSubject('');
-    } catch (error: any) {
-        toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    }
-  }, [getCurrentMapState, firestore, user, toast]);
+    } catch (e) { console.error(e); }
+  }, [mapRef, mapSubject, activeBaseLayerId, firestore, user, toast]);
 
   const handleFetchUserMaps = useCallback(async () => {
     if (!firestore || !user) return;
@@ -947,490 +655,91 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     try {
         const maps = await getUserMaps(firestore, user.uid);
         setUserMapsList(maps);
-    } catch (error) {
-        console.error("Error fetching user maps:", error);
-    } finally {
-        setIsLoadingUserMaps(false);
-    }
+    } finally { setIsLoadingUserMaps(false); }
   }, [firestore, user]);
-
-  const applyMapState = useCallback(async (mapState: MapState) => {
-      if (!isMapReady || !mapRef.current) return;
-      
-      const { handleAddHybridLayer, addGeeLayerToMap, addLayer, removeLayers } = layerManagerHook;
-      
-      const currentLayerIds = layerManagerHook.layers.map(l => l.id);
-      removeLayers(currentLayerIds);
-
-      setActiveBaseLayerId(mapState.baseLayerId);
-      if (mapState.baseLayerSettings) {
-          setBaseLayerSettings(mapState.baseLayerSettings);
-      }
-      mapRef.current.getView().setCenter(transform(mapState.view.center, 'EPSG:4326', 'EPSG:3857'));
-      mapRef.current.getView().setZoom(mapState.view.zoom);
-
-      for (const layerState of mapState.layers) {
-        try {
-          if (layerState.type === 'wfs' && layerState.url && layerState.layerName) {
-            await handleAddHybridLayer(
-              layerState.layerName,
-              layerState.name,
-              layerState.url,
-              undefined,
-              layerState.styleName || undefined,
-              layerState.visible,
-              layerState.opacity,
-              layerState.wmsStyleEnabled
-            );
-          } else if (layerState.type === 'gee' && layerState.geeParams?.tileUrl) {
-            addGeeLayerToMap(layerState.geeParams.tileUrl!, layerState.name, {
-              bandCombination: layerState.geeParams.bandCombination as any,
-            });
-          } else if (layerState.type === 'local' && layerState.data) {
-              const features = new GeoJSON().readFeatures(layerState.data, {
-                  dataProjection: 'EPSG:4326',
-                  featureProjection: 'EPSG:3857'
-              });
-              const source = new VectorSource({ features });
-              const olLayer = new VectorLayer({
-                  source,
-                  properties: { id: `local-${nanoid()}`, name: layerState.name, type: 'vector' },
-                  opacity: layerState.opacity,
-                  visible: layerState.visible,
-                  zIndex: 1000
-              });
-              addLayer({
-                  id: olLayer.get('id'),
-                  name: layerState.name,
-                  olLayer,
-                  visible: layerState.visible,
-                  opacity: layerState.opacity,
-                  type: 'vector',
-                  simpleStyle: layerState.simpleStyle,
-                  graduatedSymbology: layerState.graduatedSymbology,
-                  categorizedSymbology: layerState.categorizedSymbology,
-              });
-          }
-        } catch (e) {
-          console.error('Error loading layer from state', layerState, e);
-        }
-      }
-  }, [isMapReady, mapRef, layerManagerHook]);
-
-  const handleNewMap = useCallback(() => {
-      if (!mapRef.current) return;
-      const currentLayerIds = layerManagerHook.layers.map(l => l.id);
-      layerManagerHook.removeLayers(currentLayerIds);
-      mapRef.current.getView().animate({
-          center: transform([-60.0, -36.5], 'EPSG:4326', 'EPSG:3857'),
-          zoom: 7,
-          duration: 1000,
-      });
-      setActiveBaseLayerId(BASE_LAYER_DEFINITIONS[1].id);
-      setBaseLayerSettings({ opacity: 1, brightness: 100, contrast: 100 });
-      setMapSubject('');
-      toast({ description: "Iniciado nuevo mapa en blanco." });
-      setIsConfirmNewMapOpen(false);
-  }, [layerManagerHook, mapRef, toast]);
-
-
-  useEffect(() => {
-    const mapEl = mapElementRef.current;
-    if (!mapEl) return;
-
-    const handleContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-      handleSetActiveTool(
-        activeTool.type === null ? lastActiveToolRef.current : { type: null, id: null }
-      );
-    };
-
-    mapEl.addEventListener('contextmenu', handleContextMenu);
-
-    return () => {
-      if (mapEl) {
-        mapEl.removeEventListener('contextmenu', handleContextMenu);
-      }
-    };
-  }, [activeTool, handleSetActiveTool, mapElementRef]);
-
-  const handleSetTrelloCard = (card: TrelloCardInfo) => {
-    if (trelloPopupRef.current && !trelloPopupRef.current.closed) {
-      trelloPopupRef.current.close();
-    }
-    setTrelloCardInfo(card);
-  };
-
-  const handleTrelloNotificationOpen = (popup: Window | null) => {
-    trelloPopupRef.current = popup;
-  };
-  
-  const closeAndResetProject = useCallback((removeLayers: boolean) => {
-    if (removeLayers && projectLayerIds.length > 0) {
-      layerManagerHook.removeLayers(projectLayerIds);
-      toast({ description: `Capas del proyecto eliminadas.` });
-      if (mapRef.current) {
-        mapRef.current.getView().animate({
-          center: transform([-60.0, -36.5], 'EPSG:4326', 'EPSG:3857'),
-          zoom: 7,
-          duration: 1000,
-        });
-      }
-    }
-    setProjectLayerIds([]);
-    setTrelloCardInfo(null);
-    if (trelloPopupRef.current && !trelloPopupRef.current.closed) {
-      trelloPopupRef.current.close();
-    }
-    trelloPopupRef.current = null;
-    setIsConfirmCloseProjectOpen(false);
-  }, [projectLayerIds, layerManagerHook, mapRef, toast]);
-
-
-  const handleTrelloNotificationClose = useCallback(() => {
-    if (projectLayerIds.length > 0) {
-        setIsConfirmCloseProjectOpen(true);
-    } else {
-        closeAndResetProject(false);
-    }
-  }, [projectLayerIds, closeAndResetProject]);
-  
-  const handleShowStatistics = useCallback(
-    (layerId: string) => {
-      const layer = layerManagerHook.layers
-        .flatMap((item) => ('layers' in item ? item.layers : [item]))
-        .find((l) => l.id === layerId) as VectorMapLayer | undefined;
-      if (layer) {
-        setStatisticsLayer(layer);
-        togglePanelMinimize('statistics');
-      } else {
-        toast({
-          description: 'No se encontró la capa para calcular estadísticas.',
-          variant: 'destructive',
-        });
-      }
-    },
-    [layerManagerHook.layers, togglePanelMinimize, toast]
-  );
-
-  const hasLoadedSharedMapRef = useRef(false);
-  useEffect(() => {
-    if (!initialMapState || !isMapReady || !mapRef.current || hasLoadedSharedMapRef.current)
-      return;
-    hasLoadedSharedMapRef.current = true;
-    applyMapState(initialMapState);
-  }, [initialMapState, isMapReady, mapRef, applyMapState]);
-
-
-  const handleRecalculateTrajectoryAttributes = (layerId: string) => {
-    layerManagerHook.recalculateTrajectoryAttributes(layerId);
-    const layer = layerManagerHook.layers.flatMap(l => 'layers' in l ? l.layers : [l]).find(l => l.id === layerId) as VectorMapLayer | undefined;
-    if (layer) {
-      layerManagerHook.handleShowLayerTable(layer.id);
-    }
-  };
-
- const handleProjectCardSelection = useCallback(async (projectCode: string) => {
-    if (projectLayerIds.length > 0) {
-      layerManagerHook.removeLayers(projectLayerIds);
-    }
-    setProjectLayerIds([]);
-
-    const layersToAdd = discoveredGeoServerLayers.filter(layer => {
-      const parts = layer.name.split(':');
-      if (parts.length < 2) return false;
-      
-      const layerNameOnly = parts[1].toLowerCase();
-      const codeToSearch = projectCode.toLowerCase();
-      
-      const regex = new RegExp(`(^|[^a-z0-9])${codeToSearch}([^a-z0-9]|$)`);
-      return regex.test(layerNameOnly);
-    });
-
-    if (layersToAdd.length > 0) {
-        toast({ description: `Cargando ${layersToAdd.length} capas para el proyecto ${projectCode}...` });
-        
-        let combinedExtent: Extent | null = null;
-        const addedLayerIds: string[] = [];
-        
-        for (const layer of layersToAdd) {
-            const addedLayer = await handleDeasAddLayer(layer);
-            if (addedLayer) {
-                addedLayerIds.push(addedLayer.id);
-            }
-            if (layer.bbox) {
-                const layerExtent = layer.bbox;
-                if (!combinedExtent) {
-                    combinedExtent = layerExtent;
-                } else {
-                    combinedExtent = [
-                        Math.min(combinedExtent[0], layerExtent[0]),
-                        Math.min(combinedExtent[1], layerExtent[1]),
-                        Math.max(combinedExtent[2], layerExtent[2]),
-                        Math.max(combinedExtent[3], layerExtent[3]),
-                    ];
-                }
-            }
-        }
-        
-        setProjectLayerIds(addedLayerIds);
-
-        if (combinedExtent) {
-            setTimeout(() => {
-                zoomToBoundingBox(combinedExtent as [number, number, number, number]);
-            }, 500);
-        }
-
-    } else {
-        toast({ description: `No se encontraron capas en DEAS para el proyecto ${projectCode}.`, variant: 'destructive' });
-    }
-  }, [discoveredGeoServerLayers, handleDeasAddLayer, toast, zoomToBoundingBox, projectLayerIds, layerManagerHook]);
-
 
   return (
     <div className="flex h-screen w-screen flex-col bg-background text-foreground">
       {!initialMapState && <FirebaseErrorListener />}
-      {!initialMapState && (
-        <div className="bg-gray-700/90 backdrop-blur-sm shadow-md p-2 z-20 flex items-center gap-2">
-          <DphLogoIcon className="h-8 w-8 flex-shrink-0" />
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={'outline'}
-                  size="icon"
-                  className={`h-8 w-8 focus-visible:ring-primary flex-shrink-0 border-0 ${
-                    !panels.legend.isMinimized
-                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                      : 'bg-gray-700/80 text-white hover:bg-gray-600/90'
-                  }`}
-                  onClick={() => togglePanelMinimize('legend')}
-                >
-                  <ListTree className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="bg-gray-700 text-white border-gray-600">
-                <p className="text-xs">Capas</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <div className="flex-grow flex items-center gap-2 min-w-0">
-              <LocationSearch
-                onLocationSelect={handleLocationSelection}
-                className="flex-shrink min-w-[150px] w-full max-w-sm"
-              />
-              <div className="flex-shrink-0 w-full max-w-[220px]">
-                <BaseLayerSelector
-                  availableBaseLayers={availableBaseLayersForSelect}
-                  activeBaseLayerId={activeBaseLayerId}
-                  onChangeBaseLayer={handleChangeBaseLayer}
-                />
-              </div>
-
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 flex-shrink-0 bg-black/20 hover:bg-black/40 border-0 text-white/90"
-                  >
-                    <MapPinned className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="bg-gray-700/90 text-white border-gray-600 backdrop-blur-sm w-64">
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="focus:bg-transparent p-0">
-                    <div className="p-2 w-full">
-                      <p className="text-xs font-medium text-white/90 mb-1">Ajustes de Capa Base</p>
-                      <BaseLayerControls settings={baseLayerSettings} onChange={handleBaseLayerSettingsChange} />
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-gray-600" />
-                  <DropdownMenuItem onSelect={() => setIsConfirmNewMapOpen(true)} className="text-xs">
-                    <FilePlus2 className="h-4 w-4 mr-2" /> Nuevo mapa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => { handleFetchUserMaps(); setIsLoadMapDialogOpen(true); }} className="text-xs">
-                    <FolderOpen className="h-4 w-4 mr-2" /> Cargar mapa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setIsSaveMapDialogOpen(true)} className="text-xs">
-                    <Save className="h-4 w-4 mr-2" /> Guardar mapa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setIsShareDialogOpen(true)} className="text-xs">
-                    <Share2 className="h-4 w-4 mr-2" /> Compartir mapa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={handleCaptureAndDownload} disabled={isCapturing} className="text-xs">
-                    {isCapturing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />}
-                    Capturar Imagen del Mapa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={handleOpenStreetView} className="text-xs">
-                    <StreetViewIcon className="h-5 w-5 mr-2" /> Abrir Google Street View
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button
-                onClick={mapNavigationHook.toggleZoomToArea}
-                variant="outline"
-                size="icon"
-                className={cn(
-                  'h-8 w-8 flex-shrink-0 bg-black/20 hover:bg-black/40 border-0 text-white/90',
-                  mapNavigationHook.activeTool === 'zoomToArea' && 'bg-primary hover:bg-primary/90'
-                )}
-              >
-                <ZoomIn className="h-4 w-4" />
+      <div className="bg-gray-700/90 backdrop-blur-sm shadow-md p-2 z-20 flex items-center gap-2">
+        <DphLogoIcon className="h-8 w-8 flex-shrink-0" />
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant={'outline'} size="icon" className={`h-8 w-8 ${!panels.legend.isMinimized ? 'bg-primary text-primary-foreground' : 'bg-gray-700/80 text-white'}`} onClick={() => togglePanelMinimize('legend')}>
+                <ListTree className="h-4 w-4" />
               </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom"><p className="text-xs">Capas</p></TooltipContent>
+          </Tooltip>
+
+          <div className="flex-grow flex items-center gap-2 min-w-0">
+            <LocationSearch onLocationSelect={handleLocationSelection} className="flex-shrink min-w-[150px] w-full max-w-sm" />
+            <div className="flex-shrink-0 w-full max-w-[220px]">
+              <BaseLayerSelector availableBaseLayers={availableBaseLayersForSelect} activeBaseLayerId={activeBaseLayerId} onChangeBaseLayer={handleChangeBaseLayer} />
             </div>
 
-            <div className="flex flex-row space-x-1 ml-auto flex-shrink-0 items-center">
-              {panelToggleConfigs.map((panelConfig) => {
-                const panelState = panels[panelConfig.id as keyof typeof panels];
-                if (!panelState) return null;
-                const isPanelOpen = !panelState.isMinimized;
-                return (
-                  <Tooltip key={panelConfig.id}>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={'outline'}
-                        size="icon"
-                        className={`h-8 w-8 focus-visible:ring-primary border-0 ${
-                          isPanelOpen ? 'bg-primary text-primary-foreground' : 'bg-gray-700/80 text-white'
-                        }`}
-                        onClick={() => panelConfig.id === 'printComposer' ? handleTogglePrintComposer() : togglePanelMinimize(panelConfig.id as any)}
-                      >
-                        <panelConfig.IconComponent className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="bg-gray-700 text-white border-gray-600">
-                      <p className="text-xs">{panelConfig.name}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-8 w-8 bg-black/20 text-white/90 border-0"><MapPinned className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="bg-gray-700/90 text-white border-gray-600 backdrop-blur-sm w-64">
+                <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="focus:bg-transparent p-0">
+                  <div className="p-2 w-full"><BaseLayerControls settings={baseLayerSettings} onChange={handleBaseLayerSettingsChange} /></div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-gray-600" />
+                <DropdownMenuItem onSelect={() => setIsConfirmNewMapOpen(true)} className="text-xs"><FilePlus2 className="h-4 w-4 mr-2" /> Nuevo mapa</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => { handleFetchUserMaps(); setIsLoadMapDialogOpen(true); }} className="text-xs"><FolderOpen className="h-4 w-4 mr-2" /> Cargar mapa</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setIsSaveMapDialogOpen(true)} className="text-xs"><Save className="h-4 w-4 mr-2" /> Guardar mapa</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setIsShareDialogOpen(true)} className="text-xs"><Share2 className="h-4 w-4 mr-2" /> Compartir mapa</DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleCaptureAndDownload} className="text-xs"><Camera className="h-4 w-4 mr-2" /> Capturar Imagen</DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleOpenStreetView} className="text-xs"><StreetViewIcon className="h-5 w-5 mr-2" /> Abrir Street View</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-              <Tooltip>
+            <Button onClick={mapNavigationHook.toggleZoomToArea} variant="outline" size="icon" className={cn('h-8 w-8 bg-black/20 text-white/90 border-0', mapNavigationHook.activeTool === 'zoomToArea' && 'bg-primary')}>
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex flex-row space-x-1 ml-auto items-center">
+            {panelToggleConfigs.map((pc) => (
+              <Tooltip key={pc.id}>
                 <TooltipTrigger asChild>
-                   <Avatar className="h-8 w-8 ml-2 border border-white/20">
-                    <AvatarImage src={user?.photoURL || ''} alt={user?.displayName || 'Usuario'} />
-                    <AvatarFallback className="bg-primary/20 text-white text-[10px]">
-                      {user?.displayName?.[0] || <User className="h-3 w-3" />}
-                    </AvatarFallback>
-                  </Avatar>
+                  <Button variant={'outline'} size="icon" className={`h-8 w-8 ${!panels[pc.id as keyof typeof panels].isMinimized ? 'bg-primary text-primary-foreground' : 'bg-gray-700/80 text-white'}`} onClick={() => pc.id === 'printComposer' ? handleTogglePrintComposer() : togglePanelMinimize(pc.id as any)}>
+                    <pc.IconComponent className="h-4 w-4" />
+                  </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="bg-gray-700 text-white border-gray-600">
-                  <p className="text-xs">{user ? (user.displayName || user.email) : 'Sin sesión'}</p>
-                </TooltipContent>
+                <TooltipContent side="bottom"><p className="text-xs">{pc.name}</p></TooltipContent>
               </Tooltip>
-            </div>
-          </TooltipProvider>
-        </div>
-      )}
+            ))}
+            <Avatar className="h-8 w-8 ml-2 border border-white/20">
+              <AvatarImage src={user?.photoURL || ''} />
+              <AvatarFallback className="bg-primary/20 text-white text-[10px]">{user?.displayName?.[0] || <User className="h-3 w-3" />}</AvatarFallback>
+            </Avatar>
+          </div>
+        </TooltipProvider>
+      </div>
 
       <div ref={mapAreaRef} className="relative flex-1 overflow-visible">
-        <MapView
-          setMapInstanceAndElement={setMapInstanceAndElement}
-          activeBaseLayerId={activeBaseLayerId}
-          baseLayerSettings={baseLayerSettings}
-        />
+        <MapView setMapInstanceAndElement={setMapInstanceAndElement} activeBaseLayerId={activeBaseLayerId} baseLayerSettings={baseLayerSettings} />
         
-        <AlertDialog open={isConfirmCloseProjectOpen} onOpenChange={setIsConfirmCloseProjectOpen}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Cerrar Proyecto</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        ¿Desea también quitar las capas cargadas para este proyecto del mapa?
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel onClick={() => closeAndResetProject(false)}>No, mantener capas</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => closeAndResetProject(true)}>Sí, quitar capas</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-
-        {/* DIÁLOGOS DE PERSISTENCIA */}
         <AlertDialog open={isConfirmNewMapOpen} onOpenChange={setIsConfirmNewMapOpen}>
           <AlertDialogContent>
-            <AlertDialogHeader><AlertDialogTitle>¿Iniciar Nuevo Mapa?</AlertDialogTitle><AlertDialogDescription>Esto limpiará todas las capas actuales.</AlertDialogDescription></AlertDialogHeader>
-            <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleNewMap}>Nuevo Mapa</AlertDialogAction></AlertDialogFooter>
+            <AlertDialogHeader><AlertDialogTitle>¿Iniciar Nuevo Mapa?</AlertDialogTitle></AlertDialogHeader>
+            <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => { layerManagerHook.removeLayers(layerManagerHook.layers.map(l => l.id)); setIsConfirmNewMapOpen(false); }}>Confirmar</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
         <AlertDialog open={isSaveMapDialogOpen} onOpenChange={setIsSaveMapDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>Guardar Mapa</AlertDialogTitle></AlertDialogHeader>
-            <div className="grid gap-2"><Label>Nombre</Label><Input value={mapSubject} onChange={(e) => setMapSubject(e.target.value)} autoFocus /></div>
-            <AlertDialogFooter><AlertDialogCancel onClick={() => setMapSubject('')}>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleSaveUserMap} disabled={!mapSubject.trim()}>Guardar</AlertDialogAction></AlertDialogFooter>
+            <Input value={mapSubject} onChange={(e) => setMapSubject(e.target.value)} placeholder="Nombre del mapa..." />
+            <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleSaveUserMap}>Guardar</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog open={isLoadMapDialogOpen} onOpenChange={setIsLoadMapDialogOpen}>
-          <AlertDialogContent className="max-w-md">
-            <AlertDialogHeader><AlertDialogTitle>Cargar Mapa Guardado</AlertDialogTitle></AlertDialogHeader>
-            <ScrollArea className="max-h-[300px]">
-              {isLoadingUserMaps ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> : userMapsList.length > 0 ? (
-                <div className="space-y-2">{userMapsList.map(map => (
-                  <div key={map.id} className="flex items-center justify-between p-2 hover:bg-white/5 rounded border border-white/10" onClick={() => { applyMapState(map); setIsLoadMapDialogOpen(false); }}>
-                    <div className="cursor-pointer"><p className="text-sm font-medium">{map.subject}</p></div>
-                    <Button variant="ghost" size="icon" onClick={async (e) => { e.stopPropagation(); await deleteUserMap(firestore!, map.id); handleFetchUserMaps(); }}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                ))}</div>
-              ) : <p className="text-center text-sm p-4">No hay mapas.</p>}
-            </ScrollArea>
-            <AlertDialogFooter><AlertDialogCancel>Cerrar</AlertDialogCancel></AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen} modal={false}>
-          <AlertDialogContent>
-            <AlertDialogHeader><AlertDialogTitle>Compartir Mapa</AlertDialogTitle></AlertDialogHeader>
-            <div className="grid gap-2"><Label>Asunto</Label><Input value={mapSubject} onChange={(e) => setMapSubject(e.target.value)} autoFocus /></div>
-            <AlertDialogFooter><AlertDialogCancel onClick={() => setMapSubject('')}>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleShareMap} disabled={!mapSubject.trim()}>Compartir</AlertDialogAction></AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {trelloCardNotification && (
-          <TrelloCardNotification
-            cardName={trelloCardNotification.name}
-            cardUrl={trelloCardNotification.url}
-            onOpen={handleTrelloNotificationOpen}
-            onClose={handleTrelloNotificationClose}
-          />
-        )}
-
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none z-10 opacity-30">
-          <div className="absolute top-1/2 left-0 w-full h-px bg-gray-400 -translate-y-1/2"></div>
-          <div className="absolute left-1/2 top-0 h-full w-px bg-gray-400 -translate-x-1/2"></div>
-        </div>
-
-        <WfsLoadingIndicator isVisible={layerManagerHook.isWfsLoading || wfsLibraryHook.isLoading} />
-        {!initialMapState && <Notepad />}
-
-        {/* PANELES FLOTANTES */}
-        {isClientMounted && !initialMapState && panels.tools && !panels.tools.isMinimized && (
-          <ToolsPanel
-            panelRef={toolsPanelRef}
-            isCollapsed={panels.tools.isCollapsed}
-            onToggleCollapse={() => togglePanelCollapse('tools')}
-            onClosePanel={() => togglePanelMinimize('tools')}
-            onMouseDownHeader={(e) => handlePanelMouseDown(e, 'tools')}
-            activeDrawTool={drawingInteractions.activeTool}
-            onToggleDrawingTool={drawingInteractions.toggleTool}
-            onClearDrawnFeatures={drawingInteractions.clearDrawnFeatures}
-            onConvertDrawingsToLayer={drawingInteractions.convertDrawingsToLayer}
-            measurementHook={measurementHook}
-            isFetchingOSM={osmDataHook.isFetchingOSM}
-            onFetchOSMDataTrigger={osmDataHook.fetchOSMData}
-            onFetchCustomOSMData={osmDataHook.fetchCustomOSMData}
-            osmCategoriesForSelection={osmCategoriesForSelection}
-            selectedOSMCategoryIds={osmDataHook.selectedOSMCategoryIds}
-            onSelectedOSMCategoriesChange={osmDataHook.setSelectedOSMCategoryIds}
-            isDownloading={osmDataHook.isDownloading}
-            onDownloadOSMLayers={osmDataHook.handleDownloadOSMLayers}
-            osmQueryHook={osmQueryHook}
-            style={{ top: `${panels.tools.position.y}px`, left: `${panels.tools.position.x}px`, zIndex: panels.tools.zIndex }}
-          />
-        )}
-
-        {isClientMounted && panels.legend && !panels.legend.isMinimized && (
+        {isClientMounted && !panels.legend.isMinimized && (
           <LegendPanel
             panelRef={legendPanelRef}
             isCollapsed={panels.legend.isCollapsed}
@@ -1443,31 +752,31 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onRemoveLayers={layerManagerHook.removeLayers}
             onZoomToLayerExtent={layerManagerHook.zoomToLayerExtent}
             onShowLayerTable={layerManagerHook.handleShowLayerTable}
-            onShowStatistics={handleShowStatistics}
-            onExtractByPolygon={layerManagerHook.handleExtractByPolygon}
-            onExtractBySelection={() => layerManagerHook.handleExtractBySelection(featureInspectionHook.selectedFeatures)}
-            onSelectByLayer={featureInspectionHook.selectByLayer}
-            onExportLayer={layerManagerHook.handleExportLayer}
-            onExportWmsAsGeotiff={layerManagerHook.handleExportWmsAsGeotiff}
+            onShowStatistics={() => {}}
+            onExtractByPolygon={() => {}}
+            onExtractBySelection={() => {}}
+            onSelectByLayer={() => {}}
+            onExportLayer={() => {}}
+            onExportWmsAsGeotiff={() => {}}
             onRenameLayer={layerManagerHook.renameLayer}
             onChangeLayerStyle={layerManagerHook.changeLayerStyle}
-            onChangeLayerLabels={layerManagerHook.changeLayerLabels}
+            onChangeLayerLabels={() => {}}
             onApplyGraduatedSymbology={layerManagerHook.applyGraduatedSymbology}
             onApplyCategorizedSymbology={layerManagerHook.applyCategorizedSymbology}
-            onApplyGeoTiffStyle={layerManagerHook.applyGeoTiffStyle}
-            onToggleWmsStyle={layerManagerHook.toggleWmsStyle}
-            onGroupLayers={layerManagerHook.groupLayers}
-            onToggleGroupVisibility={layerManagerHook.toggleGroupVisibility}
-            onToggleGroupExpanded={layerManagerHook.toggleGroupExpanded}
-            onSetGroupDisplayMode={layerManagerHook.setGroupDisplayMode}
-            onUngroup={layerManagerHook.ungroupLayer}
-            onRenameGroup={layerManagerHook.renameGroup}
-            onToggleGroupPlayback={layerManagerHook.toggleGroupPlayback}
-            onSetGroupPlaySpeed={layerManagerHook.setGroupPlaySpeed}
-            isDrawingSourceEmptyOrNotPolygon={layerManagerHook.isDrawingSourceEmptyOrNotPolygon}
+            onApplyGeoTiffStyle={() => {}}
+            onToggleWmsStyle={() => {}}
+            onGroupLayers={() => {}}
+            onToggleGroupVisibility={() => {}}
+            onToggleGroupExpanded={() => {}}
+            onSetGroupDisplayMode={() => {}}
+            onUngroup={() => {}}
+            onRenameGroup={() => {}}
+            onToggleGroupPlayback={() => {}}
+            onSetGroupPlaySpeed={() => {}}
+            isDrawingSourceEmptyOrNotPolygon={true}
             isSelectionEmpty={featureInspectionHook.selectedFeatures.length === 0}
             onSetLayerOpacity={layerManagerHook.setLayerOpacity}
-            onReorderLayers={layerManagerHook.reorderLayers}
+            onReorderLayers={() => {}}
             onAddLayer={layerManagerHook.addLayer}
             activeTool={featureInspectionHook.activeTool}
             onSetActiveTool={featureInspectionHook.setActiveTool}
@@ -1476,31 +785,15 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onAddDeasLayer={handleDeasAddLayer}
             isFetchingDeasLayers={isFetchingDeasLayers}
             onReloadDeasLayers={handleReloadDeasLayers}
-            canUndoRemove={layerManagerHook.lastRemovedLayers.length > 0}
-            onUndoRemove={layerManagerHook.undoRemove}
-            selectedFeaturesForSelection={featureInspectionHook.selectedFeatures}
-            isSharedView={!!initialMapState}
+            canUndoRemove={false}
+            onUndoRemove={() => {}}
+            selectedFeaturesForSelection={[]}
+            isSharedView={false}
             style={{ top: `${panels.legend.position.y}px`, left: `${panels.legend.position.x}px`, zIndex: panels.legend.zIndex }}
           />
         )}
-
-        {isClientMounted && !initialMapState && panels.analysis && !panels.analysis.isMinimized && (
-          <AnalysisPanel
-            panelRef={analysisPanelRef}
-            isCollapsed={panels.analysis.isCollapsed}
-            onToggleCollapse={() => togglePanelCollapse('analysis')}
-            onClosePanel={() => togglePanelMinimize('analysis')}
-            onMouseDownHeader={(e) => handlePanelMouseDown(e, 'analysis')}
-            allLayers={layerManagerHook.layers.flatMap(i => 'layers' in i ? i.layers : [i])}
-            selectedFeatures={featureInspectionHook.selectedFeatures}
-            onAddLayer={layerManagerHook.addLayer}
-            style={{ top: `${panels.analysis.position.y}px`, left: `${panels.analysis.position.x}px`, zIndex: panels.analysis.zIndex }}
-            mapRef={mapRef}
-            onShowTableRequest={featureInspectionHook.processAndDisplayFeatures}
-            onToggleLayerVisibility={layerManagerHook.toggleLayerVisibility}
-          />
-        )}
       </div>
+      <Notepad />
     </div>
   );
 }

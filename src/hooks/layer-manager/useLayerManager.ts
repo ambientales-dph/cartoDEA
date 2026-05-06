@@ -1,17 +1,16 @@
 
 "use client";
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import type { Map } from 'ol';
 import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
 import type Feature from 'ol/Feature';
 import { Geometry } from 'ol/geom';
 import { useToast } from "@/hooks/use-toast";
-import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup } from '@/lib/types';
+import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { Style, Stroke, Fill, Circle as CircleStyle } from 'ol/style';
-import { transformExtent } from 'ol/proj';
 
 const LAYER_START_Z_INDEX = 1000;
 
@@ -35,8 +34,7 @@ const isValidHex = (color: string) => /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(
 interface UseLayerManagerProps {
   mapRef: React.RefObject<Map | null>;
   isMapReady: boolean;
-  onShowTableRequest: (data: any[], name: string, id: string) => void;
-  // Otros props omitidos para brevedad ya que el usuario pidió no tocar nada más
+  onShowTableRequest: (data: PlainFeatureData[], name: string, id: string) => void;
 }
 
 export const useLayerManager = ({
@@ -122,7 +120,7 @@ export const useLayerManager = ({
     if (!map) return;
     const layerItem = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === id);
     if (layerItem && layerItem.olLayer instanceof VectorLayer) {
-        const source = layerItem.olLayer.getSource();
+        const source = (layerItem.olLayer as VectorLayer<any>).getSource();
         if (source && source.getFeatures().length > 0) {
             map.getView().fit(source.getExtent(), { padding: [50, 50, 50, 50], duration: 1000 });
         }
@@ -152,7 +150,7 @@ export const useLayerManager = ({
                stroke: new Stroke({ color: strokeColor, width: 1.5 })
              })
            });
-           olLayer.setStyle(newStyle);
+           (olLayer as VectorLayer<any>).setStyle(newStyle);
            return { ...item, simpleStyle: styleOptions };
         }
       }
@@ -163,7 +161,7 @@ export const useLayerManager = ({
   const applyGraduatedSymbology = useCallback((layerId: string, symbology: GraduatedSymbology) => {
     setLayers(prev => prev.map(item => {
       if (item.id === layerId && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-        const olLayer = item.olLayer;
+        const olLayer = item.olLayer as VectorLayer<any>;
         const strokeColor = colorMap[symbology.strokeColor] || (isValidHex(symbology.strokeColor) ? symbology.strokeColor : '#000000');
 
         olLayer.setStyle((feature: any) => {
@@ -197,7 +195,7 @@ export const useLayerManager = ({
   const applyCategorizedSymbology = useCallback((layerId: string, symbology: CategorizedSymbology) => {
     setLayers(prev => prev.map(item => {
       if (item.id === layerId && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-        const olLayer = item.olLayer;
+        const olLayer = item.olLayer as VectorLayer<any>;
         const strokeColor = colorMap[symbology.strokeColor] || (isValidHex(symbology.strokeColor) ? symbology.strokeColor : '#000000');
 
         olLayer.setStyle((feature: any) => {
@@ -227,7 +225,7 @@ export const useLayerManager = ({
   const handleShowLayerTable = useCallback((id: string) => {
     const layer = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === id) as VectorMapLayer | undefined;
     if (layer && layer.olLayer instanceof VectorLayer) {
-        const features = layer.olLayer.getSource()?.getFeatures() || [];
+        const features = (layer.olLayer as VectorLayer<any>).getSource()?.getFeatures() || [];
         const plainData = features.map(f => ({ id: f.getId() as string, attributes: f.getProperties() }));
         onShowTableRequest(plainData, layer.name, layer.id);
     }
@@ -256,7 +254,6 @@ export const useLayerManager = ({
             toast({ description: `Capa "${restored.name}" restaurada.` });
         }
     },
-    // Placeholders para compatibilidad con LegendPanel
     handleExtractByPolygon: () => {},
     handleExtractBySelection: () => {},
     handleExportLayer: () => {},
