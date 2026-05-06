@@ -368,6 +368,46 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     setActiveBaseLayerId(newBaseLayerId);
   }, []);
 
+  // --- Sincronización de Capas Base con OpenLayers ---
+  const baseLayerRef = useRef<any>(null);
+  useEffect(() => {
+    if (!isMapReady || !mapRef.current) return;
+    const map = mapRef.current;
+
+    // 1. Limpiar capa base anterior
+    if (baseLayerRef.current) {
+        map.removeLayer(baseLayerRef.current);
+        baseLayerRef.current = null;
+    }
+
+    // 2. Crear nueva capa según definición
+    const def = BASE_LAYER_DEFINITIONS.find(d => d.id === activeBaseLayerId);
+    if (def && def.createLayer) {
+        const newLayer = def.createLayer();
+        if (newLayer) {
+            newLayer.setZIndex(0); // Fondo
+            newLayer.setOpacity(baseLayerSettings.opacity);
+            
+            // Aplicar filtros de brillo y contraste vía renderizado
+            newLayer.on('prerender', (event: any) => {
+                const context = event.context;
+                if (!context) return;
+                context.save();
+                context.filter = `brightness(${baseLayerSettings.brightness}%) contrast(${baseLayerSettings.contrast}%)`;
+            });
+            newLayer.on('postrender', (event: any) => {
+                const context = event.context;
+                if (!context) return;
+                context.restore();
+            });
+
+            // Insertar al fondo de la pila de capas
+            map.getLayers().insertAt(0, newLayer);
+            baseLayerRef.current = newLayer;
+        }
+    }
+  }, [isMapReady, mapRef, activeBaseLayerId, baseLayerSettings.opacity, baseLayerSettings.brightness, baseLayerSettings.contrast]);
+
   const handleSetActiveTool = useCallback((tool: ActiveTool) => {
     setActiveTool((currentTool) => {
       if (tool.type !== null) {
@@ -1364,7 +1404,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         <WfsLoadingIndicator isVisible={layerManagerHook.isWfsLoading || wfsLibraryHook.isLoading} />
         {!initialMapState && <Notepad />}
 
-        {/* PANELES FLOTANTES - RESTAURACIÓN COMPLETA */}
+        {/* PANELES FLOTANTES */}
         {isClientMounted && !initialMapState && panels.tools && !panels.tools.isMinimized && (
           <ToolsPanel
             panelRef={toolsPanelRef}
@@ -1443,9 +1483,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             style={{ top: `${panels.legend.position.y}px`, left: `${panels.legend.position.x}px`, zIndex: panels.legend.zIndex }}
           />
         )}
-
-        {/* ... Resto de paneles (Attributes, Analysis, Clima, GEE, etc.) se mantienen igual en GeoMapperClient ... */}
-        {/* Agrego solo los críticos para demostrar restauración sin romper nada */}
 
         {isClientMounted && !initialMapState && panels.analysis && !panels.analysis.isMinimized && (
           <AnalysisPanel
