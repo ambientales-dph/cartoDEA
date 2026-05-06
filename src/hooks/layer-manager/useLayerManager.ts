@@ -5,13 +5,18 @@ import React, { useState, useCallback, useRef } from 'react';
 import type { Map } from 'ol';
 import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
+import TileLayer from 'ol/layer/Tile';
+import TileWMS from 'ol/source/TileWMS';
+import XYZ from 'ol/source/XYZ';
+import GeoJSON from 'ol/format/GeoJSON';
 import type Feature from 'ol/Feature';
 import { Geometry } from 'ol/geom';
 import { transformExtent } from 'ol/proj';
 import { useToast } from "@/hooks/use-toast";
 import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData, GeoTiffStyle, LabelOptions } from '@/lib/types';
 import { nanoid } from 'nanoid';
-import { Style, Stroke, Fill, Circle as CircleStyle } from 'ol/style';
+import { Style, Stroke, Fill, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
+import { bbox as bboxStrategy } from 'ol/loadingstrategy';
 
 const LAYER_START_Z_INDEX = 1000;
 
@@ -66,7 +71,10 @@ export const useLayerManager = ({
   }, []);
 
   const addLayer = useCallback((newItem: MapLayer | LayerGroup, bringToTop: boolean = true) => {
-    if (!mapRef.current) return;
+    if (!mapRef.current) {
+        console.warn('Map not ready for addLayer');
+        return;
+    }
     const map = mapRef.current;
 
     if ('layers' in newItem) {
@@ -90,7 +98,7 @@ export const useLayerManager = ({
       });
   }, [mapRef, setLayers]);
 
-  const toggleLayerVisibility = useCallback((id: string) => {
+  const toggleLayerVisibility = useCallback((id: string, groupId?: string) => {
       setLayers(prev => prev.map(item => {
           if (item.id === id) {
               const newVis = !('layers' in item ? item.layers[0].visible : item.visible);
@@ -117,10 +125,18 @@ export const useLayerManager = ({
     const map = mapRef.current;
     if (!map) return;
     const layerItem = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === id);
-    if (layerItem && layerItem.olLayer instanceof VectorLayer) {
+    if (!layerItem) return;
+
+    if (layerItem.olLayer instanceof VectorLayer) {
         const source = (layerItem.olLayer as VectorLayer<any>).getSource();
         if (source && source.getFeatures().length > 0) {
             map.getView().fit(source.getExtent(), { padding: [50, 50, 50, 50], duration: 1000 });
+        }
+    } else if (layerItem.olLayer instanceof TileLayer) {
+        const bbox = layerItem.olLayer.get('bbox') as [number, number, number, number] | undefined;
+        if (bbox) {
+            const extent3857 = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
+            map.getView().fit(extent3857, { padding: [50, 50, 50, 50], duration: 1000 });
         }
     }
   }, [layers, mapRef]);
@@ -231,6 +247,43 @@ export const useLayerManager = ({
     }
   }, [lastRemovedLayers, addLayer]);
 
+  const addGeeLayerToMap = useCallback((tileUrl: string, name: string, params: any) => {
+      const layerId = `gee-${nanoid()}`;
+      const olLayer = new TileLayer({
+          source: new XYZ({ url: tileUrl, crossOrigin: 'anonymous' }),
+          properties: { id: layerId, name, type: 'gee', geeParams: params },
+      });
+      addLayer({ id: layerId, name, olLayer, visible: true, opacity: 1, type: 'gee', geeParams: params });
+  }, [addLayer]);
+
+  const handleAddHybridLayer = useCallback(async (name: string, title: string, url: string, bbox?: [number, number, number, number], style?: string) => {
+      const layerId = `hybrid-${nanoid()}`;
+      const wfsSource = new VectorSource({
+          format: new GeoJSON(),
+          url: (extent) => `/api/geoserver-proxy?url=${encodeURIComponent(`${url}/wfs?service=WFS&version=1.1.0&request=GetFeature&typename=${name}&outputFormat=application/json&srsname=EPSG:3857&bbox=${extent.join(',')},EPSG:3857`)}`,
+          strategy: bboxStrategy,
+      });
+
+      const olLayer = new VectorLayer({
+          source: wfsSource,
+          properties: { id: layerId, name: title, type: 'wfs', bbox },
+      });
+
+      addLayer({ id: layerId, name: title, olLayer, visible: true, opacity: 1, type: 'wfs', url, layerName: name, styleName: style });
+      return null;
+  }, [addLayer]);
+
+  const onChangeLayerLabels = useCallback((id: string, options: LabelOptions) => {
+    setLayers(prev => prev.map(item => {
+        if (item.id === id && !('layers' in item) && item.olLayer instanceof VectorLayer) {
+            item.olLayer.set('labelOptions', options);
+            item.olLayer.getSource()?.changed();
+            return { ...item, labelOptions: options };
+        }
+        return item;
+    }));
+  }, [setLayers]);
+
   return {
     layers,
     addLayer,
@@ -247,10 +300,10 @@ export const useLayerManager = ({
     isWfsLoading: false,
     lastRemovedLayers,
     undoRemove,
-    onChangeLayerLabels: (id: string, options: LabelOptions) => {},
+    onChangeLayerLabels,
     onApplyGeoTiffStyle: (id: string, style: GeoTiffStyle) => {},
     onToggleWmsStyle: (id: string) => {},
-    handleAddHybridLayer: async (name: string, title: string, url: string, bbox?: any, style?: string) => null,
-    addGeeLayerToMap: (url: string, name: string, params: any) => {},
+    handleAddHybridLayer,
+    addGeeLayerToMap,
   };
 };

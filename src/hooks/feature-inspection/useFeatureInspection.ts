@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -56,7 +55,6 @@ const highlightStyle = new Style({
   zIndex: Infinity,
 });
 
-// New style for modification vertices (red cross)
 const modifyVertexStyle = new Style({
     image: new RegularShape({
         fill: new Fill({ color: 'rgba(255, 0, 0, 0.7)' }),
@@ -120,7 +118,6 @@ export const useFeatureInspection = ({
   const selectInteractionRef = useRef<Select | null>(null);
   const modifyInteractionRef = useRef<Modify | null>(null);
   const dragBoxInteractionRef = useRef<DragBox | null>(null);
-  const deleteVertexBoxRef = useRef<DragBox | null>(null);
   const allFeaturesRef = useRef<PlainFeatureData[]>([]);
   
   const onNewSelectionRef = useRef(onNewSelection);
@@ -130,10 +127,10 @@ export const useFeatureInspection = ({
 
   const processAndDisplayFeatures = useCallback((plainData: PlainFeatureData[], layerName: string, layerId: string | null = null) => {
     allFeaturesRef.current = plainData;
-    setInspectedFeatureData(plainData); // Set the raw, unsorted data
+    setInspectedFeatureData(plainData);
     setCurrentInspectedLayerName(layerName);
     setCurrentInspectedLayerId(layerId);
-    setSortConfig(null); // Reset sort config on new data
+    setSortConfig(null);
 
     if (plainData && plainData.length > 0) {
         setTimeout(() => toast({ description: `${plainData.length} entidad(es) de "${layerName}" cargada(s) en la tabla.` }), 0);
@@ -141,7 +138,6 @@ export const useFeatureInspection = ({
   }, [toast]);
   
   const updateInspectedFeatureData = useCallback((featureId: string, key: string, value: any) => {
-    // Update the full dataset
     const newAllFeatures = allFeaturesRef.current.map(feature => {
         if (feature.id === featureId) {
             return { ...feature, attributes: { ...feature.attributes, [key]: value } };
@@ -150,7 +146,6 @@ export const useFeatureInspection = ({
     });
     allFeaturesRef.current = newAllFeatures;
 
-    // Update the visible data
     setInspectedFeatureData(prevData => {
         if (!prevData) return null;
         return prevData.map(feature => {
@@ -189,18 +184,17 @@ export const useFeatureInspection = ({
     if (!selectInteractionRef.current || !mapRef.current) return;
 
     const featuresToSelect: Feature<Geometry>[] = [];
-    let layerToSearch: VectorMapLayer | undefined;
+    let targetOlLayer: VectorLayer<any> | undefined;
 
-    // Find the layer containing the first feature to optimize search.
-    // This assumes all featureIds in the list belong to the same layer.
     if (currentInspectedLayerId) {
-      const foundLayer = mapRef.current.getAllLayers().find(l => l.get('id') === currentInspectedLayerId);
-      if (foundLayer instanceof VectorLayer) {
-        layerToSearch = foundLayer as VectorMapLayer;
+      const found = mapRef.current.getAllLayers().find(l => l.get('id') === currentInspectedLayerId);
+      if (found instanceof VectorLayer) {
+        targetOlLayer = found;
       }
     }
 
     const searchInLayer = (layer: VectorLayer<any>) => {
+      if (!layer) return;
       const source = layer.getSource();
       if (source) {
         featureIds.forEach(id => {
@@ -212,8 +206,8 @@ export const useFeatureInspection = ({
       }
     };
     
-    if (layerToSearch) {
-        searchInLayer(layerToSearch.olLayer);
+    if (targetOlLayer) {
+        searchInLayer(targetOlLayer);
     } else {
         mapRef.current.getLayers().forEach(layer => {
             if (layer instanceof VectorLayer) {
@@ -222,13 +216,9 @@ export const useFeatureInspection = ({
         });
     }
 
-    if (ctrlOrMeta) { // Add to current selection
+    if (ctrlOrMeta) {
         selectInteractionRef.current.getFeatures().extend(featuresToSelect);
-    } else if (shift) { // For now, treat shift like a normal click, can be extended
-        selectInteractionRef.current.getFeatures().clear();
-        selectInteractionRef.current.getFeatures().extend(featuresToSelect);
-    }
-    else { // Replace selection
+    } else {
         selectInteractionRef.current.getFeatures().clear();
         selectInteractionRef.current.getFeatures().extend(featuresToSelect);
     }
@@ -274,16 +264,12 @@ export const useFeatureInspection = ({
 
           try {
             const targetTurfFeature = geojsonFormat.writeFeatureObject(targetFeature);
-            
-            // Check if the target feature intersects with ANY of the selector features
             for (const selectorFeature of selectorTurfFeatures) {
-                // Use a combination of intersects and within to cover all cases
                 const intersects = turf.booleanIntersects(selectorFeature, targetTurfFeature);
                 const isWithin = turf.booleanWithin(targetTurfFeature, selectorFeature);
-
                 if (intersects || isWithin) {
                     featuresToSelect.push(targetFeature);
-                    return; // Move to the next target feature once a match is found
+                    return;
                 }
             }
           } catch(e) {
@@ -294,26 +280,18 @@ export const useFeatureInspection = ({
       selectInteractionRef.current.getFeatures().clear();
       selectInteractionRef.current.getFeatures().extend(featuresToSelect);
       setSelectedFeatures(featuresToSelect);
-
       toast({ description: `${featuresToSelect.length} entidades seleccionadas.` });
-
   }, [mapRef, toast, selectedFeatures]);
   
-  // --- This is the main effect that manages all interactions ---
   useEffect(() => {
-    if (!isMapReady || !mapRef.current) {
-        return;
-    }
-
+    if (!isMapReady || !mapRef.current) return;
     const map = mapRef.current;
     
-    // Store listeners to be able to remove them correctly
     let clickListener: EventsKey | undefined;
     let boxEndListenerKey: EventsKey | undefined;
     let selectListener: EventsKey | undefined;
     let modifyEndListener: EventsKey | undefined;
 
-    // --- Shared cleanup function ---
     const cleanup = () => {
         if (selectInteractionRef.current) {
             if (selectListener) {
@@ -346,9 +324,8 @@ export const useFeatureInspection = ({
         }
     };
     
-    cleanup(); // Clean up previous tool's effects before setting up the new one
+    cleanup();
 
-    // --- Initialize shared interactions if they don't exist ---
     if (!rasterQueryMarkersLayerRef.current) {
         const markerSource = new VectorSource();
         rasterQueryMarkersLayerRef.current = new VectorLayer({ source: markerSource, style: crossStyle, properties: { id: 'raster-query-markers' } });
@@ -358,33 +335,31 @@ export const useFeatureInspection = ({
         selectInteractionRef.current = new Select({ style: highlightStyle, multi: true });
         map.addInteraction(selectInteractionRef.current);
     }
-    selectInteractionRef.current.setActive(false); // Ensure it's off by default
+    selectInteractionRef.current.setActive(false);
 
-    // --- Tool-specific setup ---
     if (mapElementRef.current) {
         mapElementRef.current.style.cursor = activeTool ? 'crosshair' : 'default';
     }
 
     if (activeTool === 'inspect') {
         const handleInspectClick = (e: MapBrowserEvent<any>) => {
-            const featuresAtPixel: Feature<Geometry>[] = [];
-            let layerOfFirstFeature: Layer | undefined;
+            let foundFeature: Feature<Geometry> | undefined;
+            let foundLayer: Layer | undefined;
 
             map.forEachFeatureAtPixel(e.pixel, (feature, layer) => {
                 if (layer instanceof VectorLayer && layer.get('isDrawingLayer') !== true && layer.get('id') !== 'raster-query-markers' && layer.get('isVisualPartner') !== true) {
-                    featuresAtPixel.push(feature as Feature<Geometry>);
-                    if (!layerOfFirstFeature) {
-                        layerOfFirstFeature = layer;
+                    if (!foundFeature) {
+                        foundFeature = feature as Feature<Geometry>;
+                        foundLayer = layer;
                     }
                 }
             });
             
-            if (featuresAtPixel.length > 0) {
-                const feature = featuresAtPixel[0];
+            if (foundFeature) {
                 onNewSelectionRef.current(
-                    [{ id: feature.getId() as string, attributes: feature.getProperties() }],
-                    layerOfFirstFeature?.get('name') || 'Inspección',
-                    layerOfFirstFeature?.get('id') || null
+                    [{ id: foundFeature.getId() as string, attributes: foundFeature.getProperties() }],
+                    foundLayer?.get('name') || 'Inspección',
+                    foundLayer?.get('id') || null
                 );
             }
         };
@@ -404,9 +379,7 @@ export const useFeatureInspection = ({
                   if (source) {
                       source.forEachFeatureIntersectingExtent(extent, (feature) => {
                           featuresInBox.push(feature as Feature<Geometry>);
-                          if (!firstLayer) {
-                              firstLayer = layer as VectorMapLayer;
-                          }
+                          if (!firstLayer) firstLayer = layer as VectorMapLayer;
                       });
                   }
               }
@@ -424,33 +397,22 @@ export const useFeatureInspection = ({
     } else if (activeTool === 'selectBox') {
         const selectInteraction = selectInteractionRef.current!;
         selectInteraction.setActive(true);
-
         selectListener = selectInteraction.on('select', (e: SelectEvent) => {
             setSelectedFeatures([...e.target.getFeatures().getArray()]);
         });
-        
         const selectDragBox = new DragBox({});
         map.addInteraction(selectDragBox);
         dragBoxInteractionRef.current = selectDragBox;
-
         const boxEndListener = (event: DragBoxEvent) => {
             const extent = selectDragBox.getGeometry().getExtent();
             const featuresInBox: Feature<Geometry>[] = [];
-
              map.getLayers().forEach(layer => {
                 if (layer instanceof VectorLayer && layer.getVisible() && layer.get('isDrawingLayer') !== true && layer.get('id') !== 'raster-query-markers' && layer.get('isVisualPartner') !== true) {
                     const source = layer.getSource();
-                    if (source) {
-                        source.forEachFeatureIntersectingExtent(extent, (feature) => {
-                            featuresInBox.push(feature as Feature<Geometry>);
-                        });
-                    }
+                    if (source) source.forEachFeatureIntersectingExtent(extent, (f) => featuresInBox.push(f as Feature<Geometry>));
                 }
             });
-
-            if (!platformModifierKeyOnly(event.mapBrowserEvent)) {
-                selectInteraction.getFeatures().clear();
-            }
+            if (!platformModifierKeyOnly(event.mapBrowserEvent)) selectInteraction.getFeatures().clear();
             selectInteraction.getFeatures().extend(featuresInBox);
             setSelectedFeatures([...selectInteraction.getFeatures().getArray()]);
         };
@@ -460,22 +422,13 @@ export const useFeatureInspection = ({
         const handleRasterQuery = async (e: MapBrowserEvent<any>) => {
             let resultsFound = false;
             toast({ description: "Consultando capas raster..." });
-            
             const createAndAddVisuals = (content: string) => {
                 const tooltipElement = document.createElement('div');
                 tooltipElement.className = 'ol-tooltip ol-tooltip-query';
                 tooltipElement.innerHTML = content;
-                
-                const overlay = new Overlay({
-                    element: tooltipElement,
-                    offset: [10, -10],
-                    positioning: 'bottom-left',
-                    position: e.coordinate,
-                });
-
+                const overlay = new Overlay({ element: tooltipElement, offset: [10, -10], positioning: 'bottom-left', position: e.coordinate });
                 map.addOverlay(overlay);
                 rasterQueryOverlaysRef.current.push(overlay);
-
                 if (rasterQueryMarkersLayerRef.current) {
                     const markerFeature = new Feature({ geometry: new Point(e.coordinate) });
                     rasterQueryMarkersLayerRef.current.getSource()?.addFeature(markerFeature);
@@ -486,16 +439,11 @@ export const useFeatureInspection = ({
             for (const layer of map.getAllLayers()) {
                 if (!layer.getVisible() || !(layer instanceof TileLayer)) continue;
                 const source = layer.getSource();
-                
                 if (source instanceof TileWMS) {
                     const view = map.getView();
                     const viewResolution = view.getResolution();
                     if (!viewResolution) continue;
-
-                    const url = source.getFeatureInfoUrl(
-                        e.coordinate, viewResolution, view.getProjection(),
-                        {'INFO_FORMAT': 'application/json', 'FEATURE_COUNT': '1'}
-                    );
+                    const url = source.getFeatureInfoUrl(e.coordinate, viewResolution, view.getProjection(), {'INFO_FORMAT': 'application/json', 'FEATURE_COUNT': '1'});
                     if (url) {
                         const proxyUrl = `/api/geoserver-proxy?url=${encodeURIComponent(url)}&cacheBust=${Date.now()}`;
                         try {
@@ -504,17 +452,13 @@ export const useFeatureInspection = ({
                                 const data = await response.json();
                                 if (data.features && data.features.length > 0) {
                                     const properties = data.features[0].properties;
-                                    const valueKeys = ['GRAY_INDEX', 'PALETTE_INDEX', 'RED', 'GREEN', 'BLUE'];
-                                    const foundKey = valueKeys.find(key => key in properties);
-                                    let resultText = '';
-                                    if (foundKey) resultText = `${parseFloat(properties[foundKey]).toFixed(2)}`;
-                                    if (resultText) createAndAddVisuals(resultText);
+                                    const foundKey = ['GRAY_INDEX', 'PALETTE_INDEX', 'RED', 'GREEN', 'BLUE'].find(key => key in properties);
+                                    if (foundKey) createAndAddVisuals(`${parseFloat(properties[foundKey]).toFixed(2)}`);
                                 }
                             }
                         } catch (error) { console.error("Error en GetFeatureInfo:", error); }
                     }
                 }
-                
                 const geeParams = layer.get('geeParams') as Omit<GeeValueQueryInput, 'aoi' | 'zoom' | 'lon' | 'lat'> | undefined;
                 if (layer.get('type') === 'gee' && geeParams) {
                     try {
@@ -535,16 +479,11 @@ export const useFeatureInspection = ({
         const selectInteraction = selectInteractionRef.current!;
         selectInteraction.setActive(true);
         selectInteraction.style_ = (feature) => [modifyVertexStyle, highlightStyle];
-
-        const selectedFeaturesCollection = selectInteraction.getFeatures();
-        
-        const modify = new Modify({ features: selectedFeaturesCollection, style: undefined });
+        const modify = new Modify({ features: selectInteraction.getFeatures(), style: undefined });
         modifyInteractionRef.current = modify;
         map.addInteraction(modify);
-
         modifyEndListener = modify.on('modifyend', () => toast({ description: "Geometría modificada." }));
     }
-    
     return cleanup;
   }, [activeTool, isMapReady, mapRef, mapElementRef, toast, onNewSelectionRef]);
 
@@ -565,6 +504,3 @@ export const useFeatureInspection = ({
     selectByLayer,
   };
 };
-
-
-    
