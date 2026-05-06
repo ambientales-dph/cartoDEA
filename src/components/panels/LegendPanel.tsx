@@ -7,7 +7,7 @@ import LayerList from '@/components/layer-manager/LayerList';
 import FileUploadControl from '@/components/layer-manager/FileUploadControl';
 import FeatureInteractionToolbar from '@/components/feature-inspection/FeatureInteractionToolbar';
 import { Separator } from '@/components/ui/separator';
-import type { MapLayer, GeoServerDiscoveredLayer, LabelOptions, GraduatedSymbology, CategorizedSymbology, VectorMapLayer, GeoTiffStyle, LayerGroup } from '@/lib/types';
+import type { MapLayer, GeoServerDiscoveredLayer, LabelOptions, GraduatedSymbology, CategorizedSymbology, GeoTiffStyle, LayerGroup } from '@/lib/types';
 import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -132,8 +132,7 @@ const deasOrgNames: { [key: string]: string } = {
 };
 
 // Type definitions for the hierarchical structure
-type DeasLayerNode = GeoServerDiscoveredLayer;
-type DeasProjectNode = { [projectName: string]: DeasLayerNode[] };
+type DeasProjectNode = { [projectName: string]: GeoServerDiscoveredLayer[] };
 type DeasOrgNode = { [orgName: string]: DeasProjectNode };
 
 
@@ -144,7 +143,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   onChangeLayerStyle, onChangeLayerLabels, onApplyGraduatedSymbology, onApplyCategorizedSymbology, onApplyGeoTiffStyle, onToggleWmsStyle, onGroupLayers, onToggleGroupVisibility, onToggleGroupExpanded, onSetGroupDisplayMode, onUngroup, onRenameGroup, onToggleGroupPlayback, onSetGroupPlaySpeed,
   onAddLayer, 
   activeTool, onSetActiveTool, onClearSelection,
-  discoveredDeasLayers, onAddDeasLayer, isFetchingDeasLayers, onReloadDeasLayers,
+  discoveredDeasLayers = [], onAddDeasLayer, isFetchingDeasLayers, onReloadDeasLayers,
   canUndoRemove, onUndoRemove,
   selectedFeaturesForSelection,
   isSharedView,
@@ -162,7 +161,10 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   const hierarchicalDeasLayers = useMemo(() => {
     const lowercasedFilter = deasSearchTerm.toLowerCase();
     
-    const filteredLayers = discoveredDeasLayers.filter(layer => {
+    // Verificación defensiva para discoveredDeasLayers
+    const layersToFilter = discoveredDeasLayers || [];
+
+    const filteredLayers = layersToFilter.filter(layer => {
         if (!deasSearchTerm) return true;
         const [workspace = '', layerNameOnly = ''] = layer.name.split(':');
         const orgFullName = deasOrgNames[workspace.toUpperCase()] || '';
@@ -178,7 +180,6 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
         const [workspace, layerNameOnly] = layer.name.split(':');
         if (!layerNameOnly) return orgs;
         
-        // Match pattern like: ARR001_some_layer_name
         const match = layerNameOnly.match(/^([a-zA-Z]+)(\d{3,})(_.*)?$/);
 
         if (match) {
@@ -191,7 +192,6 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
             
             orgs[orgFullName][projectCode].push(layer);
         } else {
-            // Fallback for layers that don't match the pattern
             const orgCode = workspace.toUpperCase() || 'OTROS';
             const orgFullName = deasOrgNames[orgCode] || orgCode;
             const projectCode = 'General';
@@ -210,18 +210,18 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   const handleItemClick = (clickedId: string, itemType: 'layer' | 'group', event: React.MouseEvent<HTMLLIElement>) => {
     const clickedIndex = layers.findIndex(l => l.id === clickedId);
     
-    if (event.ctrlKey || event.metaKey) { // Ctrl/Cmd click
+    if (event.ctrlKey || event.metaKey) {
       setSelectedItemIds(prev =>
         prev.includes(clickedId)
-          ? prev.filter(id => id !== clickedId) // Deselect if already selected
-          : [...prev, clickedId] // Select if not selected
+          ? prev.filter(id => id !== clickedId)
+          : [...prev, clickedId]
       );
-    } else if (event.shiftKey && lastClickedIndex !== null) { // Shift click
+    } else if (event.shiftKey && lastClickedIndex !== null) {
       const start = Math.min(lastClickedIndex, clickedIndex);
       const end = Math.max(lastClickedIndex, clickedIndex);
       const rangeIds = layers.slice(start, end + 1).map(l => l.id);
       setSelectedItemIds(rangeIds);
-    } else { // Normal click
+    } else {
       setSelectedItemIds([clickedId]);
     }
     setLastClickedIndex(clickedIndex);
@@ -248,7 +248,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   const handleClearSelection = () => {
     setSelectedItemIds([]);
     setLastClickedIndex(null);
-    onClearSelection(); // This clears the feature selection on the map
+    onClearSelection();
   };
 
   const handleToggleEditing = (tool: InteractionToolId) => {
@@ -273,7 +273,6 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
       minSize={{ width: 300, height: 300 }}
     >
       <div className="flex flex-col h-full">
-        {/* --- Top Toolbar (only in full editor mode) --- */}
         {!isSharedView && (
           <div className="flex-shrink-0 space-y-2 mb-2"> 
             <div className="flex items-center gap-1 p-1 bg-white/5 rounded-md"> 
@@ -285,10 +284,9 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 bg-black/20 hover:bg-white/10 border border-white/30 text-white/90 disabled:opacity-50 disabled:bg-black/20 disabled:text-white/50"
+                            className="h-8 w-8 bg-black/20 hover:bg-white/10 border border-white/30 text-white/90 disabled:opacity-50"
                             onClick={handleGroupSelected}
                             disabled={selectedItemIds.filter(id => !layers.find(l => l.id === id && 'layers' in l)).length < 2}
-                            aria-label="Agrupar capas seleccionadas"
                           >
                             <Group className="h-4 w-4" />
                           </Button>
@@ -300,14 +298,13 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                   </Tooltip>
                   <Tooltip>
                       <TooltipTrigger asChild>
-                        <div> {/* Wrapper for disabled button */}
+                        <div>
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 bg-black/20 hover:bg-white/10 border border-white/30 text-white/90 disabled:opacity-50 disabled:bg-black/20 disabled:text-white/90 disabled:border-white/30"
+                            className="h-8 w-8 bg-black/20 hover:bg-white/10 border border-white/30 text-white/90 disabled:opacity-50"
                             onClick={onUndoRemove}
                             disabled={!canUndoRemove}
-                            aria-label="Deshacer última eliminación"
                           >
                             <Undo2 className="h-4 w-4" />
                           </Button>
@@ -319,14 +316,13 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div> {/* Wrapper for disabled button */}
+                      <div>
                         <Button
                           variant="outline"
                           size="icon"
-                          className="h-8 w-8 bg-red-700/30 hover:bg-red-600/50 border border-red-500/50 text-white/90 disabled:opacity-50 disabled:bg-black/20 disabled:text-white/90 disabled:border-white/30"
+                          className="h-8 w-8 bg-red-700/30 hover:bg-red-600/50 border border-red-500/50 text-white/90 disabled:opacity-50"
                           onClick={handleDeleteSelected}
                           disabled={selectedItemIds.length === 0}
-                          aria-label="Eliminar capas seleccionadas"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -346,9 +342,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
           </div>
         )}
 
-        {/* --- Main Content Area --- */}
         <div className="flex-grow flex flex-col min-h-0">
-            {/* --- Active Layers List --- */}
             <div className={`flex-grow flex flex-col ${isSharedView ? 'basis-full' : 'basis-2/3'}`}>
                 <ScrollArea className="flex-grow">
                     <div className="pr-3">
@@ -359,6 +353,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                             onShowLayerTable={onShowLayerTable}
                             onShowStatistics={onShowStatistics}
                             onRemoveLayer={onRemoveLayer}
+                            onRemoveLayers={onRemoveLayers}
                             onExtractByPolygon={onExtractByPolygon}
                             onExtractBySelection={onExtractBySelection}
                             onSelectByLayer={onSelectByLayer}
@@ -394,7 +389,6 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                 </ScrollArea>
             </div>
             
-            {/* --- DEAS Catalog (only in full editor mode) --- */}
             {!isSharedView && (
               <div className="flex flex-col pt-2 basis-1/3">
                   <Separator className="bg-white/10 mb-2" />
@@ -436,7 +430,6 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                           <button
                               onClick={() => setDeasSearchTerm('')}
                               className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-gray-400/80 hover:text-white"
-                              aria-label="Limpiar búsqueda"
                           >
                               <ClearIcon className="h-3.5 w-3.5" />
                           </button>
@@ -466,7 +459,6 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                             variant="outline" 
                                                             size="icon" 
                                                             className="h-6 w-6 p-0"
-                                                            title={`Añadir capa`}
                                                             onClick={() => onAddDeasLayer(layer)}
                                                             disabled={layer.wfsAddedToMap}
                                                             >

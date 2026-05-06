@@ -8,8 +8,9 @@ import VectorSource from 'ol/source/Vector';
 import { Style, Stroke, Fill, Circle as CircleStyle } from 'ol/style';
 import { fromLonLat } from 'ol/proj';
 import { defaults as defaultControls } from 'ol/control';
+import { defaults as defaultInteractions, DragPan } from 'ol/interaction';
+import type { MapBrowserEvent } from 'ol';
 
-// Default style for drawn features
 const defaultDrawingStyle = new Style({
   fill: new Fill({
     color: 'rgba(255, 255, 255, 0.2)',
@@ -44,26 +45,16 @@ export const useOpenLayersMap = (options: UseOpenLayersMapOptions = {}) => {
       properties: {
         id: 'drawing-layer',
         name: 'Dibujos del Usuario',
-        isDrawingLayer: true, // Custom property to identify this layer
-      }
+        isDrawingLayer: true,
+      },
+      zIndex: 2000, // Siempre arriba
     })
   );
 
-  const setMapInstanceAndElement = useCallback((mapInstance: Map, mapDivElement: HTMLDivElement) => {
-    if (mapInstance && mapDivElement && !mapRef.current) {
-      mapRef.current = mapInstance;
-      mapElementRef.current = mapDivElement;
-      
-      // The drawing layer is always added, regardless of mode.
-      mapInstance.addLayer(drawingLayerRef.current);
-      
-      setIsMapReady(true);
-    }
-  }, []);
-
-  // Effect to initialize the map view
   useEffect(() => {
-    if (mapElementRef.current && !mapRef.current) {
+    if (!mapRef.current) {
+      console.log('useOpenLayersMap: Inicializando instancia única del mapa');
+      
       const center = options.initialCenter 
         ? fromLonLat(options.initialCenter, 'EPSG:3857') 
         : fromLonLat([-60.0, -36.5], 'EPSG:3857');
@@ -71,14 +62,20 @@ export const useOpenLayersMap = (options: UseOpenLayersMapOptions = {}) => {
       const zoom = options.initialZoom ?? 7;
 
       const map = new Map({
-        target: mapElementRef.current,
-        layers: [], // Layers will be added by the MapView component
+        layers: [drawingLayerRef.current],
         view: new View({
           center: center,
           zoom: zoom,
           projection: 'EPSG:3857',
           constrainResolution: true,
         }),
+        interactions: defaultInteractions().extend([
+          new DragPan({
+            condition: (event: MapBrowserEvent<any>) => {
+              return event.originalEvent.button === 1; // Botón central para arrastrar siempre
+            },
+          }),
+        ]),
         controls: defaultControls({
           attributionOptions: { collapsible: false },
           zoom: true,
@@ -86,11 +83,25 @@ export const useOpenLayersMap = (options: UseOpenLayersMapOptions = {}) => {
         }),
       });
       
-      // Call the callback to set the instance refs
-      setMapInstanceAndElement(map, mapElementRef.current);
+      mapRef.current = map;
+      setIsMapReady(true);
     }
-  }, [options.initialCenter, options.initialZoom, setMapInstanceAndElement]);
 
+    return () => {
+      if (mapRef.current) {
+        console.log('useOpenLayersMap: Desmontando mapa');
+        mapRef.current.setTarget(undefined);
+      }
+    };
+  }, []);
+
+  const setMapInstanceAndElement = useCallback((_map: Map, element: HTMLDivElement) => {
+    if (mapRef.current && element) {
+      mapElementRef.current = element;
+      mapRef.current.setTarget(element);
+      console.log('useOpenLayersMap: Mapa conectado al DOM');
+    }
+  }, []);
 
   return {
     mapRef,
