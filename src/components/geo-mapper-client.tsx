@@ -60,6 +60,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { Map as OLMap } from 'ol';
 import TileLayer from 'ol/layer/Tile';
@@ -683,6 +684,55 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
 
       </div>
       <Notepad />
+
+      <AlertDialog open={isConfirmNewMapOpen} onOpenChange={setIsConfirmNewMapOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Está seguro de que desea crear un nuevo mapa?</AlertDialogTitle>
+            <AlertDialogDescription>Esto eliminará todas las capas actuales.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { layerManagerHook.removeLayers(layers.map(l => l.id)); setIsConfirmNewMapOpen(false); }}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isSaveMapDialogOpen} onOpenChange={setIsSaveMapDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Guardar Mapa en su Biblioteca</AlertDialogTitle>
+            <AlertDialogDescription>Ingrese un nombre para identificar este mapa.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={mapSubject} onChange={(e) => setMapSubject(e.target.value)} placeholder="Ej: Proyecto Hidrológico" className="my-2" />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveUserMap}>Guardar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isLoadMapDialogOpen} onOpenChange={setIsLoadMapDialogOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sus Mapas Guardados</AlertDialogTitle>
+          </AlertDialogHeader>
+          <ScrollArea className="h-64 mt-2">
+            {userMapsList.length > 0 ? (
+                userMapsList.map(m => (
+                    <div key={m.id} className="flex items-center justify-between p-2 hover:bg-muted rounded-md group">
+                        <span className="text-sm font-medium">{m.subject}</span>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 opacity-0 group-hover:opacity-100" onClick={() => toast({ description: "Funcionalidad de carga en desarrollo." })}>Cargar</Button>
+                    </div>
+                ))
+            ) : <p className="text-center text-sm text-muted-foreground pt-10">No tiene mapas guardados.</p>}
+          </ScrollArea>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cerrar</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }

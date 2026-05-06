@@ -180,21 +180,14 @@ export const useFeatureInspection = ({
     clearRasterQueryVisuals();
   }, [clearRasterQueryVisuals]);
 
-  const selectFeaturesById = useCallback((featureIds: string[], ctrlOrMeta: boolean, shift: boolean) => {
+  const selectFeaturesById = useCallback((featureIdsOrId: string | string[], ctrlOrMeta: boolean, shift: boolean) => {
     if (!selectInteractionRef.current || !mapRef.current) return;
-
+    
+    const featureIds = Array.isArray(featureIdsOrId) ? featureIdsOrId : [featureIdsOrId];
     const featuresToSelect: Feature<Geometry>[] = [];
-    let targetOlLayer: VectorLayer<any> | undefined;
-
-    if (currentInspectedLayerId) {
-      const found = mapRef.current.getAllLayers().find(l => l.get('id') === currentInspectedLayerId);
-      if (found instanceof VectorLayer) {
-        targetOlLayer = found;
-      }
-    }
-
-    const searchInLayer = (layer: VectorLayer<any>) => {
-      if (!layer) return;
+    
+    const searchInLayer = (layer: any) => {
+      if (!(layer instanceof VectorLayer)) return;
       const source = layer.getSource();
       if (source) {
         featureIds.forEach(id => {
@@ -206,14 +199,11 @@ export const useFeatureInspection = ({
       }
     };
     
-    if (targetOlLayer) {
-        searchInLayer(targetOlLayer);
+    if (currentInspectedLayerId) {
+        const found = mapRef.current.getAllLayers().find(l => l.get('id') === currentInspectedLayerId);
+        if (found) searchInLayer(found);
     } else {
-        mapRef.current.getLayers().forEach(layer => {
-            if (layer instanceof VectorLayer) {
-                searchInLayer(layer);
-            }
-        });
+        mapRef.current.getLayers().forEach(layer => searchInLayer(layer));
     }
 
     if (ctrlOrMeta) {

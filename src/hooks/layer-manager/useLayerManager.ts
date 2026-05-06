@@ -71,10 +71,7 @@ export const useLayerManager = ({
   }, []);
 
   const addLayer = useCallback((newItem: MapLayer | LayerGroup, bringToTop: boolean = true) => {
-    if (!mapRef.current) {
-        console.warn('Map not ready for addLayer');
-        return;
-    }
+    if (!mapRef.current) return;
     const map = mapRef.current;
 
     if ('layers' in newItem) {
@@ -101,6 +98,7 @@ export const useLayerManager = ({
   const toggleLayerVisibility = useCallback((id: string, groupId?: string) => {
       setLayers(prev => prev.map(item => {
           if (item.id === id) {
+              const currentItem = item as any;
               const newVis = !('layers' in item ? item.layers[0].visible : item.visible);
               if('layers' in item) item.layers.forEach(l => l.olLayer.setVisible(newVis));
               else item.olLayer.setVisible(newVis);
