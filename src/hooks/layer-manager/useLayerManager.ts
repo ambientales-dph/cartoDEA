@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useCallback, useRef } from 'react';
@@ -51,6 +50,84 @@ export const useLayerManager = ({
   const [layers, setLayersInternal] = useState<(MapLayer | LayerGroup)[]>([]);
   const { toast } = useToast();
   const [lastRemovedLayers, setLastRemovedLayers] = useState<(MapLayer | LayerGroup)[]>([]);
+
+  // --- Style Factory ---
+  const createLayerStyle = useCallback((layer: MapLayer) => {
+    return (feature: any) => {
+      let fillColor = 'rgba(51, 153, 204, 0.2)';
+      let strokeColor = '#3399CC';
+      let strokeWidth = 2;
+      let radius = 5;
+      let lineDash: number[] | undefined = undefined;
+
+      // 1. Basic Symbology (Graduated > Categorized > Simple)
+      if (layer.graduatedSymbology) {
+        const symbology = layer.graduatedSymbology;
+        const value = feature.get(symbology.field);
+        fillColor = 'rgba(128,128,128,0.5)';
+        if (typeof value === 'number') {
+            fillColor = symbology.colors[symbology.colors.length - 1];
+            for (let i = 0; i < symbology.breaks.length; i++) {
+                if (value <= symbology.breaks[i]) {
+                    fillColor = symbology.colors[i];
+                    break;
+                }
+            }
+        }
+        strokeColor = colorMap[symbology.strokeColor] || (isValidHex(symbology.strokeColor) ? symbology.strokeColor : '#000000');
+        strokeWidth = symbology.strokeWidth;
+      } else if (layer.categorizedSymbology) {
+        const symbology = layer.categorizedSymbology;
+        const value = feature.get(symbology.field);
+        const category = symbology.categories.find(c => c.value === value);
+        fillColor = category ? category.color : 'rgba(128,128,128,0.5)';
+        strokeColor = colorMap[symbology.strokeColor] || (isValidHex(symbology.strokeColor) ? symbology.strokeColor : '#000000');
+        strokeWidth = symbology.strokeWidth;
+      } else if (layer.simpleStyle) {
+        const styleOptions = layer.simpleStyle;
+        strokeColor = colorMap[styleOptions.strokeColor] || styleOptions.strokeColor;
+        fillColor = colorMap[styleOptions.fillColor] || styleOptions.fillColor;
+        strokeWidth = styleOptions.lineWidth;
+        radius = styleOptions.pointSize || 5;
+        lineDash = styleOptions.lineStyle === 'dashed' ? [10, 10] : styleOptions.lineStyle === 'dotted' ? [2, 5] : undefined;
+      }
+
+      // 2. Labels
+      let textStyle: TextStyle | undefined = undefined;
+      if (layer.labelOptions?.enabled && layer.labelOptions.labelParts.length > 0) {
+        const options = layer.labelOptions;
+        const labelText = options.labelParts.map(part => {
+          if (part.type === 'field') return String(feature.get(part.value) ?? '');
+          if (part.type === 'newline') return '\n';
+          return part.value;
+        }).join('');
+
+        if (labelText.trim()) {
+          textStyle = new TextStyle({
+            text: labelText,
+            font: `bold ${options.fontSize}px ${options.fontFamily}`,
+            fill: new Fill({ color: colorMap[options.textColor] || options.textColor }),
+            stroke: new Stroke({ color: colorMap[options.outlineColor] || options.outlineColor, width: 3 }),
+            overflow: options.overflow,
+            placement: options.placement,
+            offsetY: options.offsetY,
+            padding: [2, 2, 2, 2],
+          });
+        }
+      }
+
+      return new Style({
+        fill: new Fill({ color: fillColor }),
+        stroke: new Stroke({ color: strokeColor, width: strokeWidth, lineDash: lineDash }),
+        image: new CircleStyle({
+          radius: radius,
+          fill: new Fill({ color: fillColor }),
+          stroke: new Stroke({ color: strokeColor, width: 1.5 })
+        }),
+        text: textStyle
+      });
+    };
+  }, []);
 
   const setLayers = useCallback((updater: React.SetStateAction<(MapLayer | LayerGroup)[]>) => {
     setLayersInternal(prevItems => {
@@ -142,91 +219,48 @@ export const useLayerManager = ({
   const changeLayerStyle = useCallback((layerId: string, styleOptions: StyleOptions) => {
     setLayers(prev => prev.map(item => {
       if (item.id === layerId && !('layers' in item)) {
-        const olLayer = item.olLayer;
-        if (olLayer instanceof VectorLayer) {
-           const strokeColor = colorMap[styleOptions.strokeColor] || styleOptions.strokeColor;
-           const fillColor = colorMap[styleOptions.fillColor] || styleOptions.fillColor;
-           
-           const newStyle = new Style({
-             stroke: new Stroke({
-               color: strokeColor,
-               width: styleOptions.lineWidth,
-               lineDash: styleOptions.lineStyle === 'dashed' ? [10, 10] : styleOptions.lineStyle === 'dotted' ? [2, 5] : undefined,
-             }),
-             fill: new Fill({ color: fillColor }),
-             image: new CircleStyle({
-               radius: styleOptions.pointSize || 5,
-               fill: new Fill({ color: fillColor }),
-               stroke: new Stroke({ color: strokeColor, width: 1.5 })
-             })
-           });
-           (olLayer as VectorLayer<any>).setStyle(newStyle);
-           return { ...item, simpleStyle: styleOptions };
+        const updatedLayer = { ...item, simpleStyle: styleOptions };
+        if (updatedLayer.olLayer instanceof VectorLayer) {
+           updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
         }
+        return updatedLayer;
       }
       return item;
     }));
-  }, [setLayers]);
+  }, [setLayers, createLayerStyle]);
 
   const applyGraduatedSymbology = useCallback((layerId: string, symbology: GraduatedSymbology) => {
     setLayers(prev => prev.map(item => {
       if (item.id === layerId && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-        const olLayer = item.olLayer as VectorLayer<any>;
-        const strokeColor = colorMap[symbology.strokeColor] || (isValidHex(symbology.strokeColor) ? symbology.strokeColor : '#000000');
-
-        olLayer.setStyle((feature: any) => {
-            const value = feature.get(symbology.field);
-            let fillColor = 'rgba(128,128,128,0.5)';
-            if (typeof value === 'number') {
-                fillColor = symbology.colors[symbology.colors.length - 1];
-                for (let i = 0; i < symbology.breaks.length; i++) {
-                    if (value <= symbology.breaks[i]) {
-                        fillColor = symbology.colors[i];
-                        break;
-                    }
-                }
-            }
-            return new Style({
-                fill: new Fill({ color: fillColor }),
-                stroke: new Stroke({ color: strokeColor, width: symbology.strokeWidth }),
-                image: new CircleStyle({
-                    radius: 5,
-                    fill: new Fill({ color: fillColor }),
-                    stroke: new Stroke({ color: strokeColor, width: 1 })
-                })
-            });
-        });
-        return { ...item, graduatedSymbology: symbology };
+        const updatedLayer = { ...item, graduatedSymbology: symbology };
+        updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
+        return updatedLayer;
       }
       return item;
     }));
-  }, [setLayers]);
+  }, [setLayers, createLayerStyle]);
 
   const applyCategorizedSymbology = useCallback((layerId: string, symbology: CategorizedSymbology) => {
     setLayers(prev => prev.map(item => {
       if (item.id === layerId && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-        const olLayer = item.olLayer as VectorLayer<any>;
-        const strokeColor = colorMap[symbology.strokeColor] || (isValidHex(symbology.strokeColor) ? symbology.strokeColor : '#000000');
-
-        olLayer.setStyle((feature: any) => {
-            const value = feature.get(symbology.field);
-            const category = symbology.categories.find(c => c.value === value);
-            const fillColor = category ? category.color : 'rgba(128,128,128,0.5)';
-            return new Style({
-                fill: new Fill({ color: fillColor }),
-                stroke: new Stroke({ color: strokeColor, width: symbology.strokeWidth }),
-                image: new CircleStyle({
-                    radius: 5,
-                    fill: new Fill({ color: fillColor }),
-                    stroke: new Stroke({ color: strokeColor, width: 1 })
-                })
-            });
-        });
-        return { ...item, categorizedSymbology: symbology };
+        const updatedLayer = { ...item, categorizedSymbology: symbology };
+        updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
+        return updatedLayer;
       }
       return item;
     }));
-  }, [setLayers]);
+  }, [setLayers, createLayerStyle]);
+
+  const onChangeLayerLabels = useCallback((id: string, options: LabelOptions) => {
+    setLayers(prev => prev.map(item => {
+        if (item.id === id && !('layers' in item) && item.olLayer instanceof VectorLayer) {
+            const updatedLayer = { ...item, labelOptions: options };
+            updatedLayer.olLayer.setStyle(createLayerStyle(updatedLayer));
+            return updatedLayer;
+        }
+        return item;
+    }));
+  }, [setLayers, createLayerStyle]);
 
   const handleShowLayerTable = useCallback((id: string) => {
     const layer = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === id) as VectorMapLayer | undefined;
@@ -270,17 +304,6 @@ export const useLayerManager = ({
       addLayer({ id: layerId, name: title, olLayer, visible: true, opacity: 1, type: 'wfs', url, layerName: name, styleName: style });
       return null;
   }, [addLayer]);
-
-  const onChangeLayerLabels = useCallback((id: string, options: LabelOptions) => {
-    setLayers(prev => prev.map(item => {
-        if (item.id === id && !('layers' in item) && item.olLayer instanceof VectorLayer) {
-            item.olLayer.set('labelOptions', options);
-            item.olLayer.getSource()?.changed();
-            return { ...item, labelOptions: options };
-        }
-        return item;
-    }));
-  }, [setLayers]);
 
   return {
     layers,

@@ -56,6 +56,7 @@ export interface MapLayer {
   simpleStyle?: StyleOptions; // Persistent simple style state
   graduatedSymbology?: GraduatedSymbology;
   categorizedSymbology?: CategorizedSymbology;
+  labelOptions?: LabelOptions; // Added for labeling support
   geoTiffStyle?: GeoTiffStyle;
   wmsStyleEnabled?: boolean; // For hybrid WFS/WMS layers
   groupId?: string; // ID of the group this layer belongs to
