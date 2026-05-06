@@ -13,16 +13,15 @@ import { Geometry, Point, LineString, Polygon, MultiPolygon, MultiLineString } f
 import Select, { type SelectEvent } from 'ol/interaction/Select';
 import Modify from 'ol/interaction/Modify';
 import DragBox, { type DragBoxEvent } from 'ol/interaction/DragBox';
-import { singleClick, never, altKeyOnly, primaryAction, shiftKeyOnly, platformModifierKeyOnly } from 'ol/events/condition';
+import { click, never, platformModifierKeyOnly } from 'ol/events/condition';
 import type { PlainFeatureData, InteractionToolId, VectorMapLayer } from '@/lib/types';
 import { getGeeValueAtPoint } from '@/ai/flows/gee-flow';
-import { transform, transformExtent } from 'ol/proj';
+import { transform } from 'ol/proj';
 import type { GeeValueQueryInput } from '@/ai/flows/gee-types';
 import Overlay from 'ol/Overlay';
 import { nanoid } from 'nanoid';
 import VectorSource from 'ol/source/Vector';
 import MultiPoint from 'ol/geom/MultiPoint';
-import { intersects } from 'ol/extent';
 import GeoJSON from 'ol/format/GeoJSON';
 import * as turf from '@turf/turf';
 import type { EventsKey } from 'ol/events';
@@ -206,14 +205,19 @@ export const useFeatureInspection = ({
         mapRef.current.getLayers().forEach(layer => searchInLayer(layer));
     }
 
-    if (ctrlOrMeta) {
-        selectInteractionRef.current.getFeatures().extend(featuresToSelect);
+    const selectedCollection = selectInteractionRef.current.getFeatures();
+    if (ctrlOrMeta || shift) {
+        featuresToSelect.forEach(f => {
+            if (!selectedCollection.getArray().includes(f)) {
+                selectedCollection.push(f);
+            }
+        });
     } else {
-        selectInteractionRef.current.getFeatures().clear();
-        selectInteractionRef.current.getFeatures().extend(featuresToSelect);
+        selectedCollection.clear();
+        selectedCollection.extend(featuresToSelect);
     }
     
-    setSelectedFeatures([...selectInteractionRef.current.getFeatures().getArray()]);
+    setSelectedFeatures([...selectedCollection.getArray()]);
   }, [mapRef, currentInspectedLayerId]);
   
   const selectByLayer = useCallback((targetLayerId: string, selectorLayerId: string) => {
@@ -269,7 +273,7 @@ export const useFeatureInspection = ({
 
       selectInteractionRef.current.getFeatures().clear();
       selectInteractionRef.current.getFeatures().extend(featuresToSelect);
-      setSelectedFeatures(featuresToSelect);
+      setSelectedFeatures([...selectInteractionRef.current.getFeatures().getArray()]);
       toast({ description: `${featuresToSelect.length} entidades seleccionadas.` });
   }, [mapRef, toast, selectedFeatures]);
   
@@ -322,7 +326,11 @@ export const useFeatureInspection = ({
         map.addLayer(rasterQueryMarkersLayerRef.current);
     }
     if (!selectInteractionRef.current) {
-        selectInteractionRef.current = new Select({ style: highlightStyle, multi: true });
+        selectInteractionRef.current = new Select({ 
+            style: highlightStyle, 
+            multi: true,
+            condition: click 
+        });
         map.addInteraction(selectInteractionRef.current);
     }
     selectInteractionRef.current.setActive(false);
@@ -397,24 +405,32 @@ export const useFeatureInspection = ({
 
         const boxEndListener = (event: DragBoxEvent) => {
             const extent = selectDragBox.getGeometry().getExtent();
-            const featuresInBox: Feature<Geometry>[] = [];
-             map.getAllLayers().forEach(layer => {
-                if (layer instanceof VectorLayer && layer.getVisible() && layer.get('isDrawingLayer') !== true && layer.get('id') !== 'raster-query-markers' && layer.get('isVisualPartner') !== true) {
-                    const source = layer.getSource();
-                    if (source) source.forEachFeatureIntersectingExtent(extent, (f) => featuresInBox.push(f as Feature<Geometry>));
-                }
-            });
+            const selectedCollection = selectInteraction.getFeatures();
             
             // Si no se mantiene presionada la tecla de modificador (Ctrl/Cmd), limpiar la selección anterior
             if (!platformModifierKeyOnly(event.mapBrowserEvent)) {
-                selectInteraction.getFeatures().clear();
+                selectedCollection.clear();
             }
             
-            selectInteraction.getFeatures().extend(featuresInBox);
-            setSelectedFeatures([...selectInteraction.getFeatures().getArray()]);
+            const newFeatures: Feature<Geometry>[] = [];
+            map.getAllLayers().forEach(layer => {
+                if (layer instanceof VectorLayer && layer.getVisible() && layer.get('isDrawingLayer') !== true && layer.get('id') !== 'raster-query-markers' && layer.get('isVisualPartner') !== true) {
+                    const source = layer.getSource();
+                    if (source) {
+                        source.forEachFeatureIntersectingExtent(extent, (f) => {
+                            if (!selectedCollection.getArray().includes(f)) {
+                                newFeatures.push(f as Feature<Geometry>);
+                            }
+                        });
+                    }
+                }
+            });
             
-            if (featuresInBox.length > 0) {
-                toast({ description: `${featuresInBox.length} entidades añadidas a la selección.` });
+            selectedCollection.extend(newFeatures);
+            setSelectedFeatures([...selectedCollection.getArray()]);
+            
+            if (newFeatures.length > 0) {
+                toast({ description: `${newFeatures.length} entidades añadidas a la selección.` });
             }
         };
         boxEndListenerKey = selectDragBox.on('boxend', boxEndListener);

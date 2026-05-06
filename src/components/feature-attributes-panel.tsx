@@ -26,7 +26,7 @@ import type { PlainFeatureData } from '@/lib/types';
 
 interface AttributesPanelComponentProps {
   plainFeatureData: PlainFeatureData[] | null;
-  layerId?: string | null; // Added layerId
+  layerId?: string | null; 
   layerName?: string | null;
   
   panelRef: React.RefObject<HTMLDivElement>;
@@ -36,16 +36,13 @@ interface AttributesPanelComponentProps {
   onMouseDownHeader: (e: React.MouseEvent<HTMLDivElement>) => void;
   style?: React.CSSProperties;
 
-  // Selection props
   selectedFeatureIds: string[];
   onFeatureSelect: (featureId: string | string[], isCtrlOrMeta: boolean, isShift: boolean) => void;
 
-  // Editing props
   onAttributeChange: (featureId: string, key: string, value: any) => void;
   onAddField: (layerId: string, fieldName: string, defaultValue: any) => void;
   onRecalculateAttributes: (layerId: string) => void;
   
-  // Sorting props
   sortConfig: { key: string; direction: 'ascending' | 'descending' } | null;
   onSortChange: (config: { key: string; direction: 'ascending' | 'descending' } | null) => void;
 }
@@ -106,7 +103,6 @@ const AttributesPanelComponent: React.FC<AttributesPanelComponentProps> = ({
 
 
   useEffect(() => {
-    // Reset to page 1 whenever the data or sorting changes
     setCurrentPage(1);
     lastClickedIndexRef.current = null;
   }, [plainFeatureData, sortConfig]);
@@ -130,7 +126,6 @@ const AttributesPanelComponent: React.FC<AttributesPanelComponentProps> = ({
   const handlePrevPage = () => setCurrentPage((prev) => Math.max(prev - 1, 1));
   
   const handleRowClick = useCallback((clickedFeatureId: string, clickIndex: number, event: React.MouseEvent) => {
-      // Si se presiona Shift, seleccionar el rango desde el último clicado hasta el actual
       if (event.shiftKey && lastClickedIndexRef.current !== null) {
           const start = Math.min(lastClickedIndexRef.current, clickIndex);
           const end = Math.max(lastClickedIndexRef.current, clickIndex);
@@ -210,7 +205,6 @@ const AttributesPanelComponent: React.FC<AttributesPanelComponentProps> = ({
             return a.localeCompare(b);
         });
         
-    // Always ensure 'id' is the first column
     if (!sortedKeys.includes('id')) {
       sortedKeys.unshift('id');
     }
