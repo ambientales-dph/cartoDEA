@@ -731,7 +731,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             isDrawingSourceEmptyOrNotPolygon={!hasPolygonDrawing}
             isSelectionEmpty={featureInspectionHook.selectedFeatures.length === 0}
             onSetLayerOpacity={layerManagerHook.setLayerOpacity}
-            onReorderLayers={() => {}}
+            onReorderLayers={layerManagerHook.reorderLayers}
             onAddLayer={layerManagerHook.addLayer}
             activeTool={featureInspectionHook.activeTool}
             onSetActiveTool={featureInspectionHook.setActiveTool}

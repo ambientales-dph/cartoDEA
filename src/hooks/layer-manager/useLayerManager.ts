@@ -110,7 +110,6 @@ export const useLayerManager = ({
             fill: new Fill({ color: colorMap[options.textColor] || options.textColor }),
             stroke: new Stroke({ color: colorMap[options.outlineColor] || options.outlineColor, width: 3 }),
             overflow: options.overflow,
-            // CORRECT MAPPING: 'parallel' -> 'line', 'horizontal' -> 'point'
             placement: options.placement === 'parallel' ? 'line' : 'point',
             offsetY: options.offsetY,
             padding: [2, 2, 2, 2],
@@ -135,11 +134,13 @@ export const useLayerManager = ({
     setLayersInternal(prevItems => {
         const newItems = typeof updater === 'function' ? updater(prevItems) : updater(prevItems);
         const operationalLayers: MapLayer[] = [];
+        
         newItems.forEach(item => {
             if ('layers' in item) operationalLayers.push(...item.layers);
             else operationalLayers.push(item);
         });
 
+        // Inverse Z-index logic: Top item in list gets highest Z-index
         operationalLayers.forEach((layer, index) => {
             const newZIndex = LAYER_START_Z_INDEX + (operationalLayers.length - 1 - index);
             layer.olLayer.setZIndex(newZIndex);
@@ -148,6 +149,24 @@ export const useLayerManager = ({
         return newItems;
     });
   }, []);
+
+  const reorderLayers = useCallback((draggedIds: string[], targetId: string | null) => {
+    setLayers(prev => {
+        const itemsToMove = prev.filter(item => draggedIds.includes(item.id));
+        const remainingItems = prev.filter(item => !draggedIds.includes(item.id));
+        
+        if (targetId === null) {
+            return [...remainingItems, ...itemsToMove];
+        }
+        
+        const targetIndex = remainingItems.findIndex(item => item.id === targetId);
+        if (targetIndex === -1) return prev;
+        
+        const result = [...remainingItems];
+        result.splice(targetIndex, 0, ...itemsToMove);
+        return result;
+    });
+  }, [setLayers]);
 
   const addLayer = useCallback((newItem: MapLayer | LayerGroup, bringToTop: boolean = true) => {
     if (!mapRef.current) return;
@@ -328,5 +347,6 @@ export const useLayerManager = ({
     onToggleWmsStyle: (id: string) => {},
     handleAddHybridLayer,
     addGeeLayerToMap,
+    reorderLayers,
   };
 };
