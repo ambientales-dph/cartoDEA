@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useCallback, useRef } from 'react';
@@ -109,7 +110,8 @@ export const useLayerManager = ({
             fill: new Fill({ color: colorMap[options.textColor] || options.textColor }),
             stroke: new Stroke({ color: colorMap[options.outlineColor] || options.outlineColor, width: 3 }),
             overflow: options.overflow,
-            placement: options.placement,
+            // CORRECT MAPPING: 'parallel' -> 'line', 'horizontal' -> 'point'
+            placement: options.placement === 'parallel' ? 'line' : 'point',
             offsetY: options.offsetY,
             padding: [2, 2, 2, 2],
           });
