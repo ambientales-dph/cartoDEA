@@ -769,6 +769,22 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
           />
         )}
 
+        {isClientMounted && !panels.wfsLibrary.isMinimized && (
+          <WfsLibraryPanel
+            panelRef={wfsLibraryPanelRef}
+            isCollapsed={panels.wfsLibrary.isCollapsed}
+            onToggleCollapse={() => togglePanelCollapse('wfsLibrary')}
+            onClosePanel={() => togglePanelMinimize('wfsLibrary')}
+            onMouseDownHeader={(e) => handlePanelMouseDown(e, 'wfsLibrary')}
+            style={{ top: `${panels.wfsLibrary.position.y}px`, left: `${panels.wfsLibrary.position.x}px`, zIndex: panels.wfsLibrary.zIndex }}
+            predefinedServers={wfsLibraryPanelProps.PREDEFINED_SERVERS}
+            isLoading={wfsLibraryPanelProps.isLoading}
+            discoveredLayers={wfsLibraryPanelProps.discoveredLayers}
+            onFetchLayers={wfsLibraryPanelProps.fetchCapabilities}
+            onAddLayer={wfsLibraryPanelProps.addLayer}
+          />
+        )}
+
         {isClientMounted && !panels.tools.isMinimized && (
           <ToolsPanel
             panelRef={toolsPanelRef}
