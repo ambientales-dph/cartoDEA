@@ -553,6 +553,13 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     setActiveTool: (id) => handleSetActiveTool({ type: 'mapAction', id }),
   });
 
+  const osmQueryHook = useOsmQuery({ 
+    mapRef, 
+    mapElementRef, 
+    isMapReady, 
+    onResults: handleShowTableRequest 
+  });
+
   const { captureMapAsDataUrl } = useMapCapture({ mapRef, activeBaseLayerId });
 
   const handleTogglePrintComposer = async () => {
@@ -753,7 +760,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onSelectedOSMCategoriesChange={osmDataHook.setSelectedOSMCategoryIds}
             isDownloading={osmDataHook.isDownloading}
             onDownloadOSMLayers={osmDataHook.handleDownloadOSMLayers}
-            osmQueryHook={useOsmQuery({ mapRef, mapElementRef, isMapReady, onResults: handleShowTableRequest })}
+            osmQueryHook={osmQueryHook}
             style={{ top: `${panels.tools.position.y}px`, left: `${panels.tools.position.x}px`, zIndex: panels.tools.zIndex }}
           />
         )}
