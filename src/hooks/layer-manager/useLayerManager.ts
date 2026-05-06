@@ -1,14 +1,15 @@
 
 "use client";
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import type { Map } from 'ol';
 import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
 import type Feature from 'ol/Feature';
 import { Geometry } from 'ol/geom';
+import { transformExtent } from 'ol/proj';
 import { useToast } from "@/hooks/use-toast";
-import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData } from '@/lib/types';
+import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData, GeoTiffStyle, LabelOptions } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { Style, Stroke, Fill, Circle as CircleStyle } from 'ol/style';
 
@@ -49,9 +50,6 @@ export const useLayerManager = ({
   const setLayers = useCallback((updater: React.SetStateAction<(MapLayer | LayerGroup)[]>) => {
     setLayersInternal(prevItems => {
         const newItems = typeof updater === 'function' ? updater(prevItems) : updater(prevItems);
-        const map = mapRef.current;
-        if (!map) return newItems;
-
         const operationalLayers: MapLayer[] = [];
         newItems.forEach(item => {
             if ('layers' in item) operationalLayers.push(...item.layers);
@@ -65,11 +63,11 @@ export const useLayerManager = ({
 
         return newItems;
     });
-  }, [mapRef]);
+  }, []);
 
   const addLayer = useCallback((newItem: MapLayer | LayerGroup, bringToTop: boolean = true) => {
+    if (!mapRef.current) return;
     const map = mapRef.current;
-    if (!map) return;
 
     if ('layers' in newItem) {
         newItem.layers.forEach(layer => map.addLayer(layer.olLayer));
@@ -87,7 +85,7 @@ export const useLayerManager = ({
               if('layers' in item) item.layers.forEach(l => mapRef.current?.removeLayer(l.olLayer));
               else mapRef.current?.removeLayer(item.olLayer);
           });
-          setLastRemovedLayers(toRemove);
+          setLastRemovedLayers(prevRemoved => [...prevRemoved, ...toRemove]);
           return prev.filter(i => !ids.includes(i.id));
       });
   }, [mapRef, setLayers]);
@@ -141,9 +139,7 @@ export const useLayerManager = ({
                width: styleOptions.lineWidth,
                lineDash: styleOptions.lineStyle === 'dashed' ? [10, 10] : styleOptions.lineStyle === 'dotted' ? [2, 5] : undefined,
              }),
-             fill: new Fill({
-               color: fillColor
-             }),
+             fill: new Fill({ color: fillColor }),
              image: new CircleStyle({
                radius: styleOptions.pointSize || 5,
                fill: new Fill({ color: fillColor }),
@@ -186,7 +182,7 @@ export const useLayerManager = ({
                 })
             });
         });
-        return { ...item, graduatedSymbology: symbology, categorizedSymbology: undefined };
+        return { ...item, graduatedSymbology: symbology };
       }
       return item;
     }));
@@ -212,14 +208,10 @@ export const useLayerManager = ({
                 })
             });
         });
-        return { ...item, categorizedSymbology: symbology, graduatedSymbology: undefined };
+        return { ...item, categorizedSymbology: symbology };
       }
       return item;
     }));
-  }, [setLayers]);
-
-  const renameLayer = useCallback((id: string, newName: string) => {
-    setLayers(prev => prev.map(item => item.id === id ? { ...item, name: newName } : item));
   }, [setLayers]);
 
   const handleShowLayerTable = useCallback((id: string) => {
@@ -231,6 +223,14 @@ export const useLayerManager = ({
     }
   }, [layers, onShowTableRequest]);
 
+  const undoRemove = useCallback(() => {
+    if (lastRemovedLayers.length > 0) {
+        const restored = lastRemovedLayers[lastRemovedLayers.length - 1];
+        addLayer(restored);
+        setLastRemovedLayers(prev => prev.slice(0, -1));
+    }
+  }, [lastRemovedLayers, addLayer]);
+
   return {
     layers,
     addLayer,
@@ -240,38 +240,17 @@ export const useLayerManager = ({
     setLayerOpacity,
     zoomToLayerExtent,
     handleShowLayerTable,
-    renameLayer,
+    renameLayer: (id: string, newName: string) => setLayers(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i)),
     changeLayerStyle,
     applyGraduatedSymbology,
     applyCategorizedSymbology,
     isWfsLoading: false,
     lastRemovedLayers,
-    undoRemove: () => {
-        if (lastRemovedLayers.length > 0) {
-            const restored = lastRemovedLayers[lastRemovedLayers.length - 1];
-            addLayer(restored);
-            setLastRemovedLayers(prev => prev.slice(0, -1));
-            toast({ description: `Capa "${restored.name}" restaurada.` });
-        }
-    },
-    handleExtractByPolygon: () => {},
-    handleExtractBySelection: () => {},
-    handleExportLayer: () => {},
-    handleExportWmsAsGeotiff: () => {},
-    onChangeLayerLabels: () => {},
-    onApplyGeoTiffStyle: () => {},
-    onToggleWmsStyle: () => {},
-    groupLayers: () => {},
-    toggleGroupVisibility: () => {},
-    toggleGroupExpanded: () => {},
-    setGroupDisplayMode: () => {},
-    ungroupLayer: () => {},
-    renameGroup: () => {},
-    toggleGroupPlayback: () => {},
-    setGroupPlaySpeed: () => {},
-    recalculateTrajectoryAttributes: () => {},
-    handleAddHybridLayer: async () => null,
-    addGeeLayerToMap: () => {},
-    isDrawingSourceEmptyOrNotPolygon: true,
+    undoRemove,
+    onChangeLayerLabels: (id: string, options: LabelOptions) => {},
+    onApplyGeoTiffStyle: (id: string, style: GeoTiffStyle) => {},
+    onToggleWmsStyle: (id: string) => {},
+    handleAddHybridLayer: async (name: string, title: string, url: string, bbox?: any, style?: string) => null,
+    addGeeLayerToMap: (url: string, name: string, params: any) => {},
   };
 };
