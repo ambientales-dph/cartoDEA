@@ -262,7 +262,8 @@ const getImageForProcessing = (input: GeeTileLayerInput | GeeGeoTiffDownloadInpu
 
     if (bandCombination === 'GOES_CLOUDTOP') {
         const goesCollection = ee.ImageCollection('NOAA/GOES/19/MCMIPF')
-            .filterDate(ee.Date(Date.now()).advance(-2, 'hour'), ee.Date(Date.now()));
+            .filterDate(ee.Date(Date.now()).advance(-12, 'hour'), ee.Date(Date.now()))
+            .sort('system:time_start', false);
         
         const latestImage = ee.Image(goesCollection.first());
         
@@ -560,8 +561,10 @@ const geeGetValueAtPointFlow = ai.defineFlow(
                     return reject(new Error(`Error al consultar el valor en GEE: ${error}`));
                 }
                 
-                const bandName = finalImage.bandNames().get(0).getInfo();
-                let value = result ? result[bandName] : null;
+                // Get the first available band name from the result dictionary instead of calling getInfo() separately
+                const bandNames = result ? Object.keys(result) : [];
+                const bandName = bandNames.length > 0 ? bandNames[0] : null;
+                let value = (bandName && result) ? result[bandName] : null;
 
                 if (value !== null && input.bandCombination === 'DYNAMIC_WORLD') {
                     value = DYNAMIC_WORLD_LABELS[value as number] || `Clase Desconocida (${value})`;
