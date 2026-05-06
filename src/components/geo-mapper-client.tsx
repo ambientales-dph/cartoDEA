@@ -120,6 +120,7 @@ import type {
   GeoServerDiscoveredLayer,
   BaseLayerOptionForSelect,
   MapLayer,
+  VectorMapLayer,
   BaseLayerSettings,
   NominatimResult,
   PlainFeatureData,
@@ -201,6 +202,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [isLoadingUserMaps, setIsLoadingUserMaps] = useState(false);
   const [isClientMounted, setIsClientMounted] = useState(false);
   const [hasPolygonDrawing, setHasPolygonDrawing] = useState(false);
+  const [selectedLayerForStats, setSelectedLayerForStats] = useState<VectorMapLayer | null>(null);
 
   usePortalAuth();
   useInactivityTimeout();
@@ -380,6 +382,19 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     isMapReady,
     onShowTableRequest: handleShowTableRequest,
   });
+
+  const handleShowStatistics = useCallback((layerId: string) => {
+    const layer = layerManagerHook.layers
+        .flatMap(i => 'layers' in i ? i.layers : [i])
+        .find(l => l.id === layerId) as VectorMapLayer | undefined;
+    
+    if (layer) {
+        setSelectedLayerForStats(layer);
+        if (panels.statistics.isMinimized) {
+            togglePanelMinimize('statistics');
+        }
+    }
+  }, [layerManagerHook.layers, panels.statistics.isMinimized, togglePanelMinimize]);
 
   const handleExtractBySelection = useCallback(() => {
     const selected = featureInspectionHook.selectedFeatures;
@@ -656,7 +671,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onRemoveLayers={layerManagerHook.removeLayers}
             onZoomToLayerExtent={layerManagerHook.zoomToLayerExtent}
             onShowLayerTable={layerManagerHook.handleShowLayerTable}
-            onShowStatistics={() => togglePanelMinimize('statistics')}
+            onShowStatistics={handleShowStatistics}
             onExtractByPolygon={handleExtractByPolygon}
             onExtractBySelection={handleExtractBySelection}
             onSelectByLayer={featureInspectionHook.selectByLayer}
@@ -786,6 +801,21 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             isAuthenticating={isGeeAuthenticating}
             isAuthenticated={isGeeAuthenticated}
             style={{ top: `${panels.gee.position.y}px`, left: `${panels.gee.position.x}px`, zIndex: panels.gee.zIndex }}
+          />
+        )}
+
+        {isClientMounted && !panels.statistics.isMinimized && (
+          <StatisticsPanel
+            panelRef={statisticsPanelRef}
+            isCollapsed={panels.statistics.isCollapsed}
+            onToggleCollapse={() => togglePanelCollapse('statistics')}
+            onClosePanel={() => togglePanelMinimize('statistics')}
+            onMouseDownHeader={(e) => handlePanelMouseDown(e, 'statistics')}
+            layer={selectedLayerForStats}
+            allLayers={layerManagerHook.layers.flatMap(i => 'layers' in i ? i.layers : [i])}
+            selectedFeatures={featureInspectionHook.selectedFeatures}
+            mapRef={mapRef}
+            style={{ top: `${panels.statistics.position.y}px`, left: `${panels.statistics.position.x}px`, zIndex: panels.statistics.zIndex }}
           />
         )}
 
