@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -39,7 +38,7 @@ interface AttributesPanelComponentProps {
 
   // Selection props
   selectedFeatureIds: string[];
-  onFeatureSelect: (featureId: string, isCtrlOrMeta: boolean, isShift: boolean) => void;
+  onFeatureSelect: (featureId: string | string[], isCtrlOrMeta: boolean, isShift: boolean) => void;
 
   // Editing props
   onAttributeChange: (featureId: string, key: string, value: any) => void;
@@ -131,9 +130,17 @@ const AttributesPanelComponent: React.FC<AttributesPanelComponentProps> = ({
   const handlePrevPage = () => setCurrentPage((prev) => Math.max(prev - 1, 1));
   
   const handleRowClick = useCallback((clickedFeatureId: string, clickIndex: number, event: React.MouseEvent) => {
-      onFeatureSelect(clickedFeatureId, event.ctrlKey || event.metaKey, event.shiftKey);
+      // Si se presiona Shift, seleccionar el rango desde el último clicado hasta el actual
+      if (event.shiftKey && lastClickedIndexRef.current !== null) {
+          const start = Math.min(lastClickedIndexRef.current, clickIndex);
+          const end = Math.max(lastClickedIndexRef.current, clickIndex);
+          const rangeIds = sortedFeatureData.slice(start, end + 1).map(f => f.id);
+          onFeatureSelect(rangeIds, event.ctrlKey || event.metaKey, true);
+      } else {
+          onFeatureSelect(clickedFeatureId, event.ctrlKey || event.metaKey, false);
+      }
       lastClickedIndexRef.current = clickIndex;
-  }, [onFeatureSelect]);
+  }, [onFeatureSelect, sortedFeatureData]);
 
   const handleCellDoubleClick = (featureId: string, key: string, value: any) => {
     if (READ_ONLY_FIELDS.includes(key.toLowerCase())) return;
@@ -435,9 +442,3 @@ const AttributesPanelComponent: React.FC<AttributesPanelComponentProps> = ({
 };
 
 export default AttributesPanelComponent;
-
-    
-
-
-
-    

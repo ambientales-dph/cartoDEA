@@ -363,7 +363,7 @@ export const useFeatureInspection = ({
             const featuresInBox: Feature<Geometry>[] = [];
             let firstLayer: VectorMapLayer | undefined;
 
-            map.getLayers().forEach(layer => {
+            map.getAllLayers().forEach(layer => {
               if (layer instanceof VectorLayer && layer.getVisible() && layer.get('isDrawingLayer') !== true && layer.get('id') !== 'raster-query-markers' && layer.get('isVisualPartner') !== true) {
                   const source = layer.getSource();
                   if (source) {
@@ -390,21 +390,32 @@ export const useFeatureInspection = ({
         selectListener = selectInteraction.on('select', (e: SelectEvent) => {
             setSelectedFeatures([...e.target.getFeatures().getArray()]);
         });
+        
         const selectDragBox = new DragBox({});
         map.addInteraction(selectDragBox);
         dragBoxInteractionRef.current = selectDragBox;
+
         const boxEndListener = (event: DragBoxEvent) => {
             const extent = selectDragBox.getGeometry().getExtent();
             const featuresInBox: Feature<Geometry>[] = [];
-             map.getLayers().forEach(layer => {
+             map.getAllLayers().forEach(layer => {
                 if (layer instanceof VectorLayer && layer.getVisible() && layer.get('isDrawingLayer') !== true && layer.get('id') !== 'raster-query-markers' && layer.get('isVisualPartner') !== true) {
                     const source = layer.getSource();
                     if (source) source.forEachFeatureIntersectingExtent(extent, (f) => featuresInBox.push(f as Feature<Geometry>));
                 }
             });
-            if (!platformModifierKeyOnly(event.mapBrowserEvent)) selectInteraction.getFeatures().clear();
+            
+            // Si no se mantiene presionada la tecla de modificador (Ctrl/Cmd), limpiar la selección anterior
+            if (!platformModifierKeyOnly(event.mapBrowserEvent)) {
+                selectInteraction.getFeatures().clear();
+            }
+            
             selectInteraction.getFeatures().extend(featuresInBox);
             setSelectedFeatures([...selectInteraction.getFeatures().getArray()]);
+            
+            if (featuresInBox.length > 0) {
+                toast({ description: `${featuresInBox.length} entidades añadidas a la selección.` });
+            }
         };
         boxEndListenerKey = selectDragBox.on('boxend', boxEndListener);
 
