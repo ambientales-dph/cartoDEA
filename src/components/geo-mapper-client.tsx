@@ -98,7 +98,7 @@ import { useWfsLibrary } from '@/hooks/wfs-library/useWfsLibrary';
 import { useOsmQuery } from '@/hooks/osm-integration/useOsmQuery';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { saveUserMap, getUserMaps } from '@/services/sharing-service';
+import { saveUserMap, getUserMaps, saveMapState } from '@/services/sharing-service';
 
 import { useFirestore } from '@/firebase/provider';
 import { useUser } from '@/firebase/auth/use-user';
@@ -125,6 +125,7 @@ import type {
   NominatimResult,
   PlainFeatureData,
   ActiveTool,
+  SerializableMapLayer,
 } from '@/lib/types';
 import { authenticateWithGee } from '@/ai/flows/gee-flow';
 import { checkTrelloCredentials } from '@/ai/flows/trello-actions';
@@ -196,6 +197,9 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [isSaveMapDialogOpen, setIsSaveMapDialogOpen] = useState(false);
   const [isLoadMapDialogOpen, setIsLoadMapDialogOpen] = useState(false);
   const [isConfirmNewMapOpen, setIsConfirmNewMapOpen] = useState(false);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareLink, setShareLink] = useState('');
   
   const [mapSubject, setMapSubject] = useState('');
   const [userMapsList, setUserMapsList] = useState<(MapState & { id: string })[]>([]);
@@ -221,6 +225,31 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const [activeTool, setActiveTool] = useState<ActiveTool>({ type: null, id: null });
   const lastActiveToolRef = useRef<ActiveTool>({ type: null, id: null });
 
+  const featureInspectionHook = useFeatureInspection({
+    mapRef,
+    mapElementRef,
+    isMapReady,
+    activeTool: activeTool.type === 'interaction' ? activeTool.id : null,
+    setActiveTool: (id) => handleSetActiveTool({ type: 'interaction', id }),
+    onNewSelection: (plainData, layerName, layerId) => {
+      featureInspectionHook.processAndDisplayFeatures(plainData, layerName, layerId);
+      if (panels.attributes.isMinimized) {
+        togglePanelMinimize('attributes');
+      }
+    },
+  });
+
+  const layerManagerHook = useLayerManager({
+    mapRef,
+    isMapReady,
+    onShowTableRequest: (data, name, id) => {
+      featureInspectionHook.processAndDisplayFeatures(data, name, id);
+      if (panels.attributes.isMinimized) {
+        togglePanelMinimize('attributes');
+      }
+    },
+  });
+
   const { panels, handlePanelMouseDown, togglePanelCollapse, togglePanelMinimize } =
     useFloatingPanels({
       toolsPanelRef,
@@ -238,6 +267,18 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       panelWidth: PANEL_WIDTH,
       panelPadding: PANEL_PADDING,
     });
+
+  const osmQueryHook = useOsmQuery({ 
+    mapRef, 
+    mapElementRef, 
+    isMapReady, 
+    onResults: (data, name) => {
+      featureInspectionHook.processAndDisplayFeatures(data, name, null);
+      if (panels.attributes.isMinimized) {
+        togglePanelMinimize('attributes');
+      }
+    } 
+  });
 
   const [activeBaseLayerId, setActiveBaseLayerId] = useState<string>(
     initialMapState?.baseLayerId || BASE_LAYER_DEFINITIONS[1].id
@@ -377,40 +418,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     };
   }, [isMapReady, handleSetActiveTool, mapElementRef]);
 
-  const featureInspectionHook = useFeatureInspection({
-    mapRef,
-    mapElementRef,
-    isMapReady,
-    activeTool: activeTool.type === 'interaction' ? activeTool.id : null,
-    setActiveTool: (id) => handleSetActiveTool({ type: 'interaction', id }),
-    onNewSelection: (plainData, layerName, layerId) => {
-      featureInspectionHook.processAndDisplayFeatures(plainData, layerName, layerId);
-      if (panels.attributes.isMinimized) {
-        togglePanelMinimize('attributes');
-      }
-    },
-  });
-
   const [discoveredGeoServerLayers, setDiscoveredGeoServerLayers] = useState<GeoServerDiscoveredLayer[]>([]);
   const [printLayoutImage, setPrintLayoutImage] = useState<string | null>(null);
   const [isGeeAuthenticated, setIsGeeAuthenticated] = useState(false);
   const [isGeeAuthenticating, setIsGeeAuthenticating] = useState(true);
-
-  const handleShowTableRequest = useCallback(
-    (data: PlainFeatureData[], name: string, id: string) => {
-      featureInspectionHook.processAndDisplayFeatures(data, name, id);
-      if (panels.attributes.isMinimized) {
-        togglePanelMinimize('attributes');
-      }
-    },
-    [featureInspectionHook, panels.attributes.isMinimized, togglePanelMinimize]
-  );
-
-  const layerManagerHook = useLayerManager({
-    mapRef,
-    isMapReady,
-    onShowTableRequest: handleShowTableRequest,
-  });
 
   const handleShowStatistics = useCallback((layerId: string) => {
     const layer = layerManagerHook.layers
@@ -478,8 +489,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     toast({ description: "Extrayendo entidades por polígono..." });
 
     const format = new GeoJSON({ featureProjection: 'EPSG:3857', dataProjection: 'EPSG:4326' });
-    const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
-    
     const polygonGeoJSON = format.writeFeatureObject(polygonFeature) as turf.Feature<turf.Polygon>;
     const featuresToExtract: Feature<Geometry>[] = [];
 
@@ -582,13 +591,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     setActiveTool: (id) => handleSetActiveTool({ type: 'mapAction', id }),
   });
 
-  const osmQueryHook = useOsmQuery({ 
-    mapRef, 
-    mapElementRef, 
-    isMapReady, 
-    onResults: handleShowTableRequest 
-  });
-
   const { captureMapAsDataUrl } = useMapCapture({ mapRef, activeBaseLayerId });
 
   const handleTogglePrintComposer = async () => {
@@ -613,6 +615,85 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     [mapRef]
   );
 
+  const handleShareMap = useCallback(async () => {
+    if (!mapRef.current || !firestore) return;
+    
+    setIsSharing(true);
+    try {
+        const view = mapRef.current.getView();
+        const center = transform(view.getCenter() || [0,0], 'EPSG:3857', 'EPSG:4326');
+        const zoom = view.getZoom() || 7;
+        
+        const serializableLayers: SerializableMapLayer[] = layerManagerHook.layers.flatMap(item => {
+            if ('layers' in item) return item.layers;
+            return [item];
+        }).map(layer => {
+            let data: string | undefined = undefined;
+            if (layer.type === 'vector' || layer.type === 'drawing' || layer.type === 'analysis' || layer.type === 'osm') {
+                try {
+                    const source = (layer.olLayer as VectorLayer<any>).getSource();
+                    if (source) {
+                        const features = source.getFeatures();
+                        if (features.length > 0) {
+                            const format = new GeoJSON();
+                            data = format.writeFeatures(features, {
+                                featureProjection: 'EPSG:3857',
+                                dataProjection: 'EPSG:4326'
+                            });
+                            if (data.length > 800000) {
+                                return {
+                                    type: 'local-placeholder',
+                                    name: layer.name,
+                                    opacity: layer.opacity,
+                                    visible: layer.visible,
+                                } as SerializableMapLayer;
+                            }
+                        }
+                    }
+                } catch (e) { console.error(e); }
+            }
+
+            return {
+                type: (layer.type === 'vector' || layer.type === 'drawing' || layer.type === 'analysis' || layer.type === 'osm') ? 'local' : layer.type as any,
+                name: layer.name,
+                opacity: layer.opacity,
+                visible: layer.visible,
+                url: (layer as any).url || null,
+                layerName: (layer as any).layerName || null,
+                styleName: (layer as any).styleName || null,
+                wmsStyleEnabled: layer.wmsStyleEnabled,
+                geeParams: layer.geeParams ? {
+                    bandCombination: layer.geeParams.bandCombination,
+                    tileUrl: layer.geeParams.tileUrl,
+                } : null,
+                data,
+                simpleStyle: layer.simpleStyle,
+                graduatedSymbology: layer.graduatedSymbology,
+                categorizedSymbology: layer.categorizedSymbology,
+                geoTiffStyle: layer.geoTiffStyle,
+            };
+        });
+
+        const mapState: MapState = {
+            subject: mapSubject || 'Mapa compartido',
+            view: { center, zoom },
+            baseLayerId: activeBaseLayerId,
+            baseLayerSettings: baseLayerSettings,
+            layers: serializableLayers,
+        };
+
+        const mapId = await saveMapState(firestore, mapState);
+        const url = `${window.location.origin}/share/${mapId}`;
+        setShareLink(url);
+        setIsShareDialogOpen(true);
+    } catch (error) {
+        console.error("Error sharing map:", error);
+        toast({ description: "Error al generar el enlace para compartir.", variant: "destructive" });
+    } finally {
+        setIsSharing(false);
+    }
+  }, [mapRef, firestore, mapSubject, activeBaseLayerId, baseLayerSettings, layerManagerHook.layers, toast]);
+
   const handleSaveUserMap = useCallback(async () => {
     if (!mapRef.current || !firestore || !user) return;
     const currentView = mapRef.current.getView();
@@ -620,7 +701,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       subject: mapSubject || 'Mapa sin título',
       view: { center: transform(currentView.getCenter() || [0,0], 'EPSG:3857', 'EPSG:4326'), zoom: currentView.getZoom() || 7 },
       baseLayerId: activeBaseLayerId,
-      layers: [],
+      layers: [], // Actual expansion could happen here similarly to share
     };
     await saveUserMap(firestore, user.uid, mapState);
     toast({ description: "Mapa guardado." });
@@ -660,6 +741,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
                 <DropdownMenuItem onSelect={() => setIsConfirmNewMapOpen(true)} className="text-xs"><FilePlus2 className="h-4 w-4 mr-2" /> Nuevo mapa</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => { getUserMaps(firestore!, user!.uid).then(setUserMapsList); setIsLoadMapDialogOpen(true); }} className="text-xs"><FolderOpen className="h-4 w-4 mr-2" /> Cargar mapa</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setIsSaveMapDialogOpen(true)} className="text-xs"><Save className="h-4 w-4 mr-2" /> Guardar mapa</DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleShareMap} className="text-xs" disabled={isSharing}>
+                   {isSharing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Share2 className="h-4 w-4 mr-2" />}
+                   Compartir Mapa
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={async () => {
                     const data = await captureMapAsDataUrl();
                     if (data) { const l = document.createElement('a'); l.href = data; l.download = 'mapa.jpg'; l.click(); }
@@ -821,7 +906,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             selectedFeatures={featureInspectionHook.selectedFeatures}
             onAddLayer={layerManagerHook.addLayer}
             mapRef={mapRef}
-            onShowTableRequest={handleShowTableRequest}
+            onShowTableRequest={(data, name, id) => {
+              featureInspectionHook.processAndDisplayFeatures(data, name, id);
+              if (panels.attributes.isMinimized) togglePanelMinimize('attributes');
+            }}
             onToggleLayerVisibility={layerManagerHook.toggleLayerVisibility}
             style={{ top: `${panels.analysis.position.y}px`, left: `${panels.analysis.position.x}px`, zIndex: panels.analysis.zIndex }}
           />
@@ -930,6 +1018,24 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cerrar</AlertDialogCancel>
           </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Mapa Compartido</AlertDialogTitle>
+            <AlertDialogDescription>
+                Cualquier persona con este enlace podrá ver tu mapa (solo lectura).
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex items-center gap-2 my-4">
+            <Input value={shareLink} readOnly className="bg-muted text-xs" />
+            <Button size="sm" onClick={() => { navigator.clipboard.writeText(shareLink); toast({ description: "Enlace copiado al portapapeles." }); }}>Copiar</Button>
+            </div>
+            <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setIsShareDialogOpen(false)}>Cerrar</AlertDialogAction>
+            </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
