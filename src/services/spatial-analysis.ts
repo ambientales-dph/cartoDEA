@@ -113,7 +113,6 @@ export const POPULATION_DATA: { partido: string; censo_2001: number | null; cens
   { partido: "Arrecifes", censo_2001: 27279, censo_2010: 29044, censo_2022: 32077 },
   { partido: "Avellaneda", censo_2001: 328980, censo_2010: 342677, censo_2022: 366117 },
   { partido: "Ayacucho", censo_2001: 19634, censo_2010: 20337, censo_2022: 21757 },
-  { partido: "Ayacucho", censo_2001: 19634, censo_2010: 20337, censo_2022: 21757 },
   { partido: "Azul", censo_2001: 63034, censo_2010: 65280, censo_2022: 75152 },
   { partido: "Bahía Blanca", censo_2001: 284776, censo_2010: 301572, censo_2022: 334505 },
   { partido: "Balcarce", censo_2001: 42040, censo_2010: 43823, censo_2022: 48516 },
@@ -252,7 +251,6 @@ export async function performBufferAnalysis({ features, distance, units }: { fea
   
   const buffered = turfBuffer(featureCollectionObj, distance, { units });
 
-  // Use a different GeoJSON instance for reading back, as featureProjection is global to the instance
   const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
   return formatForMap.readFeatures(buffered) as Feature<OlPolygon>[];
 }
@@ -261,7 +259,7 @@ export async function performConvexHull({ features }: { features: Feature<Geomet
     const format = new GeoJSON({ featureProjection: 'EPSG:3857' });
     const featureCollectionObj = format.writeFeaturesObject(features);
     
-    const hull = convex(featureCollectionObj as TurfFeatureCollection<TurfPoint>); // Turf expects points for convex hull
+    const hull = convex(featureCollectionObj as TurfFeatureCollection<TurfPoint>); 
     if (!hull) return [];
 
     const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
@@ -276,7 +274,6 @@ export async function performConcaveHull({ features, concavity }: { features: Fe
     if (!hull) return [];
 
     const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
-    // Concave can return a MultiPolygon, so we handle that case.
     return formatForMap.readFeatures({ type: 'FeatureCollection', features: [hull] }) as Feature<OlPolygon | TurfMultiPolygon>[];
 }
 
@@ -301,7 +298,6 @@ export async function calculateOptimalConcavity({ features }: { features: Featur
     const variance = distances.reduce((sum, d) => sum + Math.pow(d - meanDistance, 2), 0) / distances.length;
     const stdDev = Math.sqrt(variance);
     
-    // A heuristic: suggested concavity is the mean distance plus one standard deviation
     const suggestedConcavity = meanDistance + stdDev;
 
     return { suggestedConcavity, meanDistance, stdDev };
@@ -338,12 +334,11 @@ export async function calculateSpatialStats({
                 totalWeightedSum += value * intersectedArea;
             }
         } catch(e) {
-            // Ignore topology errors and continue
         }
     });
 
     const weightedAverage = totalIntersectedArea > 0 ? totalWeightedSum / totalIntersectedArea : 0;
-    const proportionalSum = totalWeightedSum; // Renamed for clarity
+    const proportionalSum = totalWeightedSum;
 
     return {
         weightedAverage,
@@ -359,7 +354,6 @@ export function projectPopulationGeometric({ partidoData, initialPopulation, bas
     let P1, P2, T1, T2;
 
     if (partidoData.partido === "Lezama") {
-        // Special case for Lezama
         if (!partidoData.censo_2010 || !partidoData.censo_2022) {
             throw new Error("Datos insuficientes para Lezama (se requieren 2010 y 2022).");
         }
@@ -368,7 +362,6 @@ export function projectPopulationGeometric({ partidoData, initialPopulation, bas
         T1 = 2010;
         T2 = 2022;
     } else {
-        // Standard case
         if (!partidoData.censo_2001 || !partidoData.censo_2022) {
              throw new Error("Datos insuficientes para la proyección (se requieren 2001 y 2022).");
         }
@@ -385,7 +378,6 @@ export function projectPopulationGeometric({ partidoData, initialPopulation, bas
     
     const r = Math.pow(P2 / P1, 1 / timeDiff) - 1;
     
-    // Project from the user-defined base year to the target year
     const n = targetYear - baseYear;
     const projectedPopulation = initialPopulation * Math.pow(1 + r, n);
     
@@ -414,18 +406,15 @@ export async function generateCrossSections({
         const lineGeoJSON = format.writeFeatureObject(olFeature) as TurfFeature<TurfLineString>;
         const lineLength = turfLength(lineGeoJSON, { units: 'kilometers' });
 
-        // Convert distance and length to kilometers for Turf
         const distanceKm = units === 'meters' ? distance / 1000 : distance;
         const lengthKm = units === 'meters' ? length / 1000 : length;
 
         for (let d = distanceKm; d < lineLength; d += distanceKm) {
             const pointOnLine = along(lineGeoJSON, d, { units: 'kilometers' });
             
-            // Get bearing at that point
             const nextPoint = along(lineGeoJSON, d + 0.001, { units: 'kilometers' });
             const lineBearing = bearing(pointOnLine, nextPoint);
             
-            // Calculate perpendicular bearings
             const bearing1 = lineBearing + 90;
             const bearing2 = lineBearing - 90;
 
@@ -488,18 +477,16 @@ export async function performBezierSmoothing({ features, resolution }: { feature
             newPoly.properties = feature.properties;
             smoothedFeatures.push(newPoly);
         } else if (feature.geometry.type === 'MultiPolygon') {
-            // Handle MultiPolygon by smoothing each polygon's exterior ring
             const multiPoly = feature as TurfFeature<TurfMultiPolygon>;
             const smoothedPolygons = multiPoly.geometry.coordinates.map(polyCoords => {
                 const exterior = turfLineString(polyCoords[0]);
                 const smoothedExterior = bezierSpline(exterior, { resolution });
-                return [smoothedExterior.geometry.coordinates]; // Return coordinates in polygon format
+                return [smoothedExterior.geometry.coordinates]; 
             });
             const newMultiPoly = multiPolygon(smoothedPolygons);
             newMultiPoly.properties = feature.properties;
             smoothedFeatures.push(newMultiPoly);
         } else {
-             // Keep points and other geoms as they are
             smoothedFeatures.push(feature);
         }
     }
@@ -550,12 +537,11 @@ export async function performFeatureTracking({
             if (distance <= maxDistanceKm) {
                 const targetValue = targetFeature.properties?.[attributeField] ?? 0;
                 
-                // Cost function: a simple weighted sum of distance and attribute difference
-                const distanceCost = distance / maxDistanceKm; // Normalized distance
+                const distanceCost = distance / maxDistanceKm; 
                 const attributeDifference = Math.abs(sourceValue - targetValue);
                 const attributeCost = sourceValue > 0 ? attributeDifference / sourceValue : (attributeDifference > 0 ? 1 : 0);
                 
-                const cost = (0.6 * distanceCost) + (0.4 * attributeCost); // Weighted average
+                const cost = (0.6 * distanceCost) + (0.4 * attributeCost); 
 
                 if (cost < minCost) {
                     minCost = cost;

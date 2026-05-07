@@ -126,6 +126,7 @@ import {
     performConvexHull,
     performConcaveHull,
     calculateOptimalConcavity,
+    calculateSpatialStats,
     projectPopulationGeometric,
     generateCrossSections,
     dissolveFeatures,
@@ -204,7 +205,6 @@ const SectionHeader: React.FC<{ icon: React.ElementType; title: string; }> = ({ 
     </div>
 );
 
-// --- ESTILO MODIFICADO: NARANJA, CONTINUA, 1PX ---
 const analysisLayerStyle = new Style({
     stroke: new Stroke({ color: '#ff4500', width: 1 }),
     fill: new Fill({ color: 'rgba(255, 69, 0, 0.1)' }),
@@ -213,7 +213,7 @@ const analysisLayerStyle = new Style({
 const profilePointsStyle = new Style({
     image: new CircleStyle({
         radius: 6,
-        fill: new Fill({ color: 'rgba(255, 107, 107, 0.8)' }), // Red-orange
+        fill: new Fill({ color: 'rgba(255, 107, 107, 0.8)' }), 
         stroke: new Stroke({ color: '#ffffff', width: 1.5 }),
     }),
 });
@@ -221,7 +221,7 @@ const profilePointsStyle = new Style({
 type DatasetId = 'NASADEM_ELEVATION' | 'ALOS_DSM' | 'COPERNICUS_DEM' | 'JRC_WATER_OCCURRENCE';
 
 interface ProfileDataSeries {
-    datasetId: string; // Can be a DatasetId or a layer ID
+    datasetId: string; 
     name: string;
     color: string;
     unit: string;
@@ -257,17 +257,14 @@ interface CorrelationResult {
 interface CombinedChartDataPoint {
     distance: number;
     location: number[]; // [lon, lat] in EPSG:4326
-    [key: string]: number | number[]; // Will hold values for each datasetId, e.g., NASADEM_ELEVATION: 45.3
+    [key: string]: number | number[]; 
 }
 
-// Custom component for inverted histogram bar
 const InvertedBar = (props: any) => {
     const { fill, x, y, width, height, background } = props;
     if (background) {
-        // This is a dummy component for the background, so it doesn't draw anything visible
         return null;
     }
-    // Draw the bar "hanging" from the top (y=0 in this case)
     return <rect x={x} y={0} width={width} height={height} fill={fill} />;
 };
 
@@ -302,44 +299,36 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 }) => {
     const [activeAccordionItem, setActiveAccordionItem] = useState<string | undefined>(undefined);
 
-    // State for Clip tool
     const [clipInputLayerId, setClipInputLayerId] = useState('');
     const [clipMaskLayerId, setClipMaskLayerId] = useState('');
     const [clipOutputName, setClipOutputName] = useState('');
 
-    // State for Difference (Erase) tool
     const [eraseInputLayerId, setEraseInputLayerId] = useState('');
     const [eraseMaskLayerId, setEraseMaskLayerId] = useState('');
     const [eraseOutputName, setEraseOutputName] = useState('');
 
-    // State for Buffer tool
     const [bufferInputLayerId, setBufferInputLayerId] = useState('');
     const [bufferDistance, setBufferDistance] = useState<number>(100);
     const [bufferUnits, setBufferUnits] = useState<'meters' | 'kilometers' | 'miles'>('meters');
     const [bufferOutputName, setBufferOutputName] = useState('');
 
-    // State for Hull tools
     const [hullInputLayerId, setHullInputLayerId] = useState('');
     const [hullOutputName, setHullOutputName] = useState('');
     const [concavity, setConcavity] = useState<number>(2);
     const [isCalculatingConcavity, setIsCalculatingConcavity] = useState(false);
     const [concavityStats, setConcavityStats] = useState<{ mean: number, stdDev: number } | null>(null);
 
-    // State for Union tool
     const [unionLayerIds, setUnionLayerIds] = useState<string[]>([]);
     const [unionOutputName, setUnionOutputName] = useState('');
 
-    // State for Dissolve tool
     const [dissolveInputLayerId, setDissolveInputLayerId] = useState('');
     const [dissolveOutputName, setDissolveOutputName] = useState('');
 
-    // State for Population Projection
     const [selectedPartido, setSelectedPartido] = useState<string>('');
     const [partialPopulation, setPartialPopulation] = useState<string>('');
     const [baseYear, setBaseYear] = useState<string>('2022');
     const [projectionResult, setProjectionResult] = useState<{ projectedPopulation: number; averageAnnualRate: number } | null>(null);
 
-    // State for Cross-sections tool
     const [crossSectionInputLayerId, setCrossSectionInputLayerId] = useState('');
     const [crossSectionOutputName, setCrossSectionOutputName] = useState<string>('');
     const [crossSectionDistance, setCrossSectionDistance] = useState<number>(100);
@@ -347,12 +336,10 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [crossSectionUnits, setCrossSectionUnits] = useState<'meters' | 'kilometers'>('meters');
     const [isGeneratingCrossSections, setIsGeneratingCrossSections] = useState(false);
 
-    // State for Bezier Smoothing
     const [smoothInputLayerId, setSmoothInputLayerId] = useState('');
     const [smoothOutputName, setSmoothOutputName] = useState<string>('');
     const [smoothness, setSmoothness] = useState<number>(5000);
 
-    // State for Topographic Profile
     const [profileLine, setProfileLine] = useState<Feature<LineString> | null>(null);
     const [profileData, setProfileData] = useState<ProfileDataSeries[] | null>(null);
     const [activeProfileDrawTool, setActiveProfileDrawTool] = useState<'LineString' | 'FreehandLine' | null>(null);
@@ -366,7 +353,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [corrAxisX, setCorrAxisX] = useState('');
     const [corrAxisY, setCorrAxisY] = useState('');
 
-    // State for Trajectory Analysis
     const [clusterInputLayerId, setClusterInputLayerId] = useState('');
     const [clusterDistance, setClusterDistance] = useState(50);
     const [clusterOutputName, setClusterOutputName] = useState('');
@@ -381,7 +367,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [clusterStdDevMultiplier, setClusterStdDevMultiplier] = useState(1);
     const [clusterDistanceStats, setClusterDistanceStats] = useState<{ mean: number, stdDev: number } | null>(null);
 
-    // State for Feature Tracking
     const [trackingIsLoading, setTrackingIsLoading] = useState(false);
     const [trackingLayer1Id, setTrackingLayer1Id] = useState('');
     const [trackingLayer2Id, setTrackingLayer2Id] = useState('');
@@ -389,7 +374,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [trackingRadius, setTrackingRadius] = useState(100);
     const [trackingOutputName, setTrackingOutputName] = useState('');
 
-    // State for clicked profile points
     const [profilePoints, setProfilePoints] = useState<Feature<Point>[]>([]);
     const profilePointsLayerRef = useRef<VectorLayer<VectorSource<Point>> | null>(null);
     const profilePointsSourceRef = useRef<VectorSource<Point> | null>(null);
@@ -407,14 +391,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     
     const { toast } = useToast();
 
-    // --- START Profile Logic ---
     const stopDrawing = useCallback(() => {
         if (drawInteractionRef.current && mapRef.current) {
             mapRef.current.removeInteraction(drawInteractionRef.current);
             drawInteractionRef.current = null;
             setActiveProfileDrawTool(null);
         }
-        // Clean up live tooltip
         if (liveTooltipRef.current && mapRef.current) {
             mapRef.current.removeOverlay(liveTooltipRef.current);
             liveTooltipRef.current = null;
@@ -431,7 +413,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         setCorrAxisX('');
         setCorrAxisY('');
         setProfileLayerId('');
-        if (profilePointsSourceRef.current) { // Clear marked points
+        if (profilePointsSourceRef.current) { 
             profilePointsSourceRef.current.clear();
             setProfilePoints([]);
         }
@@ -450,20 +432,18 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     }, [toast]);
 
     useEffect(() => {
-        // Ensure analysis layer exists on mount
         if (mapRef.current && !analysisLayerRef.current) {
             const source = new VectorSource();
             const layer = new VectorLayer({
                 source,
                 style: analysisLayerStyle,
                 properties: { id: 'internal-analysis-profile-layer' },
-                zIndex: 9999, // High z-index to draw on top
+                zIndex: 9999, 
             });
             analysisLayerRef.current = layer;
             mapRef.current.addLayer(layer);
         }
 
-        // Ensure clicked points layer exists on mount
         if (mapRef.current && !profilePointsLayerRef.current) {
             profilePointsSourceRef.current = new VectorSource();
             const layer = new VectorLayer({
@@ -476,7 +456,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             mapRef.current.addLayer(layer);
         }
 
-        // Add the hover marker overlay to the map
         if (mapRef.current && !profileHoverMarkerRef.current) {
             const markerElement = document.createElement('div');
             markerElement.className = 'w-3 h-3 bg-orange-500 rounded-full border-2 border-white shadow-lg pointer-events-none';
@@ -489,7 +468,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             mapRef.current.addOverlay(marker);
         }
 
-        // Cleanup on unmount
         return () => {
             if (mapRef.current) {
                 if (analysisLayerRef.current) mapRef.current.removeLayer(analysisLayerRef.current);
@@ -636,7 +614,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                 const fraction = i / SAMPLES;
                 const coordinate = geometry.getCoordinateAt(fraction);
                 const [lon, lat] = transform(coordinate, 'EPSG:3857', 'EPSG:4326');
-                const distance = lineLength * fraction; // Distance in METERS
+                const distance = lineLength * fraction; 
                 pointsToQuery.push({ lon, lat, distance });
             }
 
@@ -647,14 +625,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                 let name, color, unit, band, isGoesLayer = false, imageId;
 
                 if (staticDef) {
-                    // It's a predefined GEE dataset
                     imageId = staticDef.id;
                     name = staticDef.name;
                     color = staticDef.color;
                     unit = staticDef.unit;
                     band = staticDef.band;
                 } else {
-                    // It's a dynamic raster layer from the map
                     const rasterLayer = allRasterLayersForProfile.find(l => l.id === datasetId);
                     if (!rasterLayer || !rasterLayer.geeParams?.imageId) {
                         console.warn(`Capa ráster con ID ${datasetId} no encontrada o sin imageId, omitiendo.`);
@@ -662,9 +638,9 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     }
                     imageId = rasterLayer.geeParams.imageId;
                     name = rasterLayer.name;
-                    color = '#ff6b6b'; // Default color for custom raster layers
+                    color = '#ff6b6b'; 
                     unit = rasterLayer.geeParams?.bandCombination === 'GOES_CLOUDTOP' ? '°C' : 'valor';
-                    band = rasterLayer.geeParams?.bandCombination === 'GOES_CLOUDTOP' ? 'CMI_C13' : 'first'; // Fallback band name
+                    band = rasterLayer.geeParams?.bandCombination === 'GOES_CLOUDTOP' ? 'CMI_C13' : 'first'; 
                     isGoesLayer = rasterLayer.geeParams?.bandCombination === 'GOES_CLOUDTOP';
                 }
 
@@ -680,7 +656,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     location: [point.lon, point.lat],
                 }));
 
-                // For GOES temperature, convert from Kelvin to Celsius for stats and charting
                 const valuesForStats = isGoesLayer
                     ? points.map(p => (p.value !== 0 ? p.value - 273.15 : 0))
                     : points.map(p => p.value);
@@ -744,7 +719,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             };
             for (const series of profileData) {
                 if (series.points && i < series.points.length) {
-                    // Convert GOES data from K to C for charting
                     const value = series.unit === '°C' ? series.points[i].value - 273.15 : series.points[i].value;
                     dataPoint[series.datasetId] = value;
                 }
@@ -771,7 +745,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             }
 
             if (isGoes) {
-                [min, max] = [max, min]; // Invert for hanging bars
+                [min, max] = [max, min]; 
             }
 
             if (min === max) return [];
@@ -849,7 +823,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
     const handleYAxisDomainChange = (axis: 'left' | 'right', key: 'min' | 'max', value: string) => {
         const numValue = value === '' ? 'auto' : parseFloat(value);
-        if (value !== '' && isNaN(numValue as number)) return; // Ignore invalid numbers
+        if (value !== '' && isNaN(numValue as number)) return; 
 
         const setDomain = axis === 'left' ? setYAxisDomainLeft : setYAxisDomainRight;
         setDomain(prev => ({ ...prev, [key]: numValue }));
@@ -858,7 +832,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const useSteppedChange = (setter: () => void) => {
         const start = () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
-            setter(); // Initial change
+            setter(); 
             intervalRef.current = setInterval(() => setter(), 100);
         };
         const stop = () => {
@@ -872,7 +846,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
         return () => setDomain(prev => {
             const currentValue = prev[key];
-            if (currentValue === 'auto') return prev; // Cannot step from 'auto'
+            if (currentValue === 'auto') return prev; 
             const change = direction === 'inc' ? 1 : -1;
             return { ...prev, [key]: (currentValue as number) + change };
         });
@@ -1034,13 +1008,11 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             type: 'vector'
         }, true);
 
-        // Clear temporary points
         profilePointsSourceRef.current?.clear();
         setProfilePoints([]);
 
         toast({ description: `Capa "${newLayerName}" creada con ${clonedFeatures.length} puntos.` });
     }, [profilePoints, onAddLayer, toast]);
-    // --- END Profile Logic ---
 
 
     const vectorLayers = useMemo(() => {
@@ -1491,19 +1463,18 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         const allFeatures: Feature<Geometry>[] = [];
         const allAttributeKeys = new Set<string>();
 
-        // First, gather all features and discover all unique attribute keys
         layersToUnion.forEach(layer => {
             const source = layer.olLayer.getSource();
             if (source) {
                 const features = source.getFeatures();
                 features.forEach(f => {
                     Object.keys(f.getProperties()).forEach(key => {
-                        if (key !== 'geometry') { // Exclude geometry from attribute keys
+                        if (key !== 'geometry') { 
                             allAttributeKeys.add(key);
                         }
                     });
                 });
-                allFeatures.push(...features.map(f => f.clone())); // Clone features
+                allFeatures.push(...features.map(f => f.clone())); 
             }
         });
 
@@ -1514,13 +1485,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
         const outputName = unionOutputName.trim() || `Unión de ${layersToUnion.length} capas`;
 
-        // Normalize features to have all attribute keys
         const normalizedFeatures = allFeatures.map(f => {
             f.setId(nanoid());
             const properties = f.getProperties();
             for (const key of allAttributeKeys) {
                 if (!(key in properties)) {
-                    f.set(key, null); // Add missing keys with null value
+                    f.set(key, null); 
                 }
             }
             return f;
@@ -1752,108 +1722,61 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         const layer1 = allLayers.find(l => l.id === trajectoryLayer1Id) as VectorMapLayer | undefined;
         const layer2 = allLayers.find(l => l.id === trajectoryLayer2Id) as VectorMapLayer | undefined;
 
-        if (!layer1 || !layer2 || trajectorySearchRadius <= 0) {
-            toast({ description: "Seleccione dos capas de puntos y un radio de búsqueda válido.", variant: 'destructive' });
+        if (!layer1 || !layer2) {
+            toast({ description: "Seleccione dos capas de puntos.", variant: 'destructive' });
             return;
         }
 
         const source1 = layer1.olLayer.getSource();
         const source2 = layer2.olLayer.getSource();
-        if (!source1 || !source2 || source1.getFeatures().length === 0 || source2.getFeatures().length === 0) {
-            toast({ description: 'Una o ambas capas no tienen entidades.', variant: 'destructive' });
-            return;
-        }
+        if (!source1 || !source2) return;
 
-        // Correctly get timestamp from geeParams.metadata
-        const time1 = layer1.geeParams?.metadata?.timestamp;
-        const time2 = layer2.geeParams?.metadata?.timestamp;
+        const features1 = source1.getFeatures();
+        const features2 = source2.getFeatures();
 
-        if (!time1 || !time2) {
-            toast({
-                title: "Faltan Metadatos",
-                description: "No se encontró la información de tiempo en una o ambas capas. Asegúrese de que provengan de la herramienta de detección de núcleos.",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        const timeDiffMs = Math.abs(new Date(time2).getTime() - new Date(time1).getTime());
-        const timeDiffHours = timeDiffMs / (1000 * 60 * 60);
-
-        if (timeDiffHours <= 0) {
-            toast({ description: "El intervalo de tiempo entre las capas es cero o inválido.", variant: 'destructive' });
+        if (features1.length === 0 || features2.length === 0) {
+            toast({ description: "Una o ambas capas no tienen entidades.", variant: "destructive" });
             return;
         }
 
         const format = new GeoJSON({ featureProjection: 'EPSG:3857', dataProjection: 'EPSG:4326' });
         const formatForMap = new GeoJSON({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
-        const features1GeoJSON = format.writeFeaturesObject(source1.getFeatures());
-        const features2GeoJSON = format.writeFeaturesObject(source2.getFeatures());
+        const fc2 = featureCollection(features2.map(f => format.writeFeatureObject(f)) as TurfFeature<TurfPoint>[]);
 
-        const vectorFeatures: Feature<LineString>[] = [];
-        for (const point1 of features1GeoJSON.features) {
-            const nearest = turfNearestPoint(point1, features2GeoJSON);
-            const distance = turfDistance(point1, nearest, { units: 'kilometers' });
+        const trajectoryFeatures: Feature<LineString>[] = [];
 
-            if (distance <= trajectorySearchRadius) {
-                const line = turfLineString([point1.geometry.coordinates, nearest.geometry.coordinates]);
-                const bearingVal = turfBearing(point1, nearest);
-                const speed = distance / timeDiffHours;
+        features1.forEach(f1 => {
+            const p1 = format.writeFeatureObject(f1) as TurfFeature<TurfPoint>;
+            const nearest = turfNearestPoint(p1, fc2);
+            const dist = turfDistance(p1, nearest, { units: 'kilometers' });
 
+            if (dist <= trajectorySearchRadius) {
+                const line = turfLineString([p1.geometry.coordinates, nearest.geometry.coordinates]);
                 const olFeature = formatForMap.readFeature(line) as Feature<LineString>;
                 olFeature.setProperties({
-                    velocidad_kmh: parseFloat(speed.toFixed(2)),
-                    sentido_grados: parseFloat(bearingVal.toFixed(2)),
-                    distancia_km: parseFloat(distance.toFixed(2))
+                    ...f1.getProperties(),
+                    distancia_km: parseFloat(dist.toFixed(2)),
+                    sentido: parseFloat(turfBearing(p1, nearest).toFixed(2))
                 });
                 olFeature.setId(nanoid());
-                vectorFeatures.push(olFeature);
+                trajectoryFeatures.push(olFeature);
             }
-        }
+        });
 
-        if (vectorFeatures.length === 0) {
-            toast({ description: "No se encontraron trayectorias entre las capas con los parámetros dados." });
+        if (trajectoryFeatures.length === 0) {
+            toast({ description: "No se encontraron trayectorias en el radio dado." });
             return;
         }
 
-        const outputName = trajectoryOutputName.trim() || `Trayectoria ${layer1.name} a ${layer2.name}`;
-        const newLayerId = `trajectory-result-${nanoid()}`;
-        const newSource = new VectorSource({ features: vectorFeatures });
-
-        const vectorStyle = (feature: Feature) => {
-            const speed = feature.get('velocidad_kmh') as number || 0;
-            const color = speed > 100 ? '#e63946' : speed > 50 ? '#f4a261' : '#2a9d8f';
-
-            const line = new Style({
-                stroke: new Stroke({ color: color, width: 2 })
-            });
-
-            const arrow = new Style({
-                geometry: new Point((feature.getGeometry() as LineString).getLastCoordinate()),
-                image: new CircleStyle({
-                    fill: new Fill({ color: color }),
-                    radius: 3
-                })
-            });
-
-            const label = new Style({
-                geometry: new Point((feature.getGeometry() as LineString).getFlatMidpoint()),
-                text: new TextStyle({
-                    text: `${speed.toFixed(1)} km/h`,
-                    font: '10px sans-serif',
-                    fill: new Fill({ color: '#fff' }),
-                    stroke: new Stroke({ color: '#000', width: 2.5 }),
-                    offsetY: -12
-                })
-            });
-
-            return [line, arrow, label];
-        };
-
+        const outputName = trajectoryOutputName.trim() || `Trayectorias ${layer1.name}`;
+        const newLayerId = `trajectory-${nanoid()}`;
+        const newSource = new VectorSource({ features: trajectoryFeatures });
         const newOlLayer = new VectorLayer({
             source: newSource,
             properties: { id: newLayerId, name: outputName, type: 'analysis' },
-            style: vectorStyle
+            style: new Style({
+                stroke: new Stroke({ color: '#ff4500', width: 2 }),
+            })
         });
 
         onAddLayer({
@@ -1865,324 +1788,51 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             type: 'analysis',
         }, true);
 
-        toast({ description: `Se generaron ${vectorFeatures.length} vectores de trayectoria.` });
+        toast({ description: `Se crearon ${trajectoryFeatures.length} trayectorias.` });
     };
 
     const handleAnalyzeCoherence = () => {
-        const format = new GeoJSON({ featureProjection: 'EPSG:3857', dataProjection: 'EPSG:4326' });
         const layer = trajectoryLayers.find(l => l.id === coherenceLayerId) as VectorMapLayer | undefined;
         if (!layer) {
-            toast({ description: "Por favor, seleccione una capa de trayectorias para analizar.", variant: "destructive" });
+            toast({ description: "Seleccione una capa de trayectorias.", variant: "destructive" });
             return;
         }
+
         const source = layer.olLayer.getSource();
-        if (!source || source.getFeatures().length === 0) {
-            toast({ description: 'La capa de trayectorias no tiene entidades.', variant: 'destructive' });
+        if (!source || source.getFeatures().length < 2) {
+            toast({ description: "Se necesitan al menos 2 trayectorias.", variant: "destructive" });
             return;
         }
-        if (!coherenceMagnitudeField || !coherenceNumericFields.includes(coherenceMagnitudeField)) {
-            toast({ description: "Por favor, seleccione un campo de magnitud válido.", variant: "destructive" });
-            return;
-        }
-    
+
         const allFeatures = source.getFeatures();
-    
-        // Clean up previous average vector if it exists
-        if (averageVectorLayerId) {
-            const oldLayer = allLayers.find(l => l.id === averageVectorLayerId);
-            if (oldLayer) onAddLayer(oldLayer as MapLayer, false); // This is a trick to remove it from the map
+        const magnitudes = allFeatures.map(f => f.get(coherenceMagnitudeField)).filter(v => typeof v === 'number') as number[];
+        const directions = allFeatures.map(f => f.get('sentido')).filter(v => typeof v === 'number') as number[];
+
+        if (magnitudes.length === 0 || directions.length === 0) {
+            toast({ description: "La capa no tiene datos de magnitud o sentido.", variant: "destructive" });
+            return;
         }
-    
-        if (useClustering) {
-            const geojsonFeatures = format.writeFeaturesObject(allFeatures);
-            const centroids = featureCollection(geojsonFeatures.features.map((f, i) => {
-                const center = centroid(f as TurfFeature<TurfLineString>);
-                center.properties = { ...f.properties, _originalFeatureId: allFeatures[i].getId() || `feat-${i}` };
-                return center;
-            }));
-    
-            // Calculate NN distances for epsilon
-            const nnDistances = centroids.features.map((point, i, arr) => {
-                const otherPoints = featureCollection(arr.filter((_, j) => i !== j));
-                if (otherPoints.features.length === 0) return 0;
-                return turfNearestPoint(point, otherPoints).properties.distanceToPoint;
-            });
-            const meanDistance = nnDistances.reduce((a, b) => a + b, 0) / nnDistances.length;
-            const stdDevDistance = Math.sqrt(nnDistances.map(d => Math.pow(d - meanDistance, 2)).reduce((a, b) => a + b, 0) / nnDistances.length);
-            setClusterDistanceStats({ mean: meanDistance, stdDev: stdDevDistance });
-    
-            const dbscanDistance = meanDistance + (clusterStdDevMultiplier * stdDevDistance);
-            toast({ description: `Distancia de clustering: ${dbscanDistance.toFixed(2)} km` });
-            
-            const clusters = clustersDbscan(centroids, dbscanDistance, { minPoints: 2 });
-    
-            const clusterGroups: Record<string, Feature<Geometry>[]> = {};
-            const clusteredFeatureIds = new Set<string>();
-    
-            clusters.features.forEach(feature => {
-                const clusterId = feature.properties!.cluster;
-                if (clusterId === undefined) return; // Skip noise points for now
-    
-                const idStr = String(clusterId);
-                const originalFeatureId = feature.properties!._originalFeatureId;
-                const originalFeature = allFeatures.find(f => f.getId() === originalFeatureId);
-    
-                if (originalFeature) {
-                    if (!clusterGroups[idStr]) {
-                        clusterGroups[idStr] = [];
-                    }
-                    clusterGroups[idStr].push(originalFeature);
-                    clusteredFeatureIds.add(originalFeatureId as string);
-                }
-            });
-    
-            // Process actual clusters
-            for (const clusterId in clusterGroups) {
-                const featuresInCluster = clusterGroups[clusterId];
-                if (featuresInCluster.length < 2) continue;
-    
-                const directions = featuresInCluster.map(f => f.get('sentido_grados')).filter(d => typeof d === 'number') as number[];
-                const magnitudes = featuresInCluster.map(f => f.get(coherenceMagnitudeField)).filter(s => typeof s === 'number') as number[];
-    
-                if (directions.length === 0 || magnitudes.length === 0) continue;
-    
-                const avgMagnitude = magnitudes.reduce((a, b) => a + b, 0) / magnitudes.length;
-                const avgX = directions.reduce((sum, d) => sum + Math.cos(d * Math.PI / 180), 0) / directions.length;
-                const avgY = directions.reduce((sum, d) => sum + Math.sin(d * Math.PI / 180), 0) / directions.length;
-                const avgAngleRad = Math.atan2(avgY, avgX);
-                let avgDirection = (avgAngleRad * 180 / Math.PI + 360) % 360;
-    
-                const stdDevDirection = Math.sqrt(featuresInCluster.reduce((sum, d) => {
-                    let dirDiff = Math.abs(d.get('sentido_grados') - avgDirection);
-                    if (dirDiff > 180) dirDiff = 360 - dirDiff;
-                    return sum + Math.pow(dirDiff, 2);
-                }, 0) / featuresInCluster.length);
-                const stdDevMagnitude = Math.sqrt(magnitudes.reduce((sum, s) => sum + Math.pow(s - avgMagnitude, 2), 0) / magnitudes.length);
-    
-                featuresInCluster.forEach(olFeature => {
-                    const direction = olFeature.get('sentido_grados');
-                    const magnitude = olFeature.get(coherenceMagnitudeField);
-    
-                    let dirDiff = Math.abs(direction - avgDirection);
-                    if (dirDiff > 180) dirDiff = 360 - dirDiff;
-                    const magDiff = Math.abs(magnitude - avgMagnitude);
-    
-                    let coherence = 'Coherente';
-                    if (dirDiff > stdDevDirection * 2 || magDiff > stdDevMagnitude * 2) {
-                        coherence = 'Atípico';
-                    } else if (dirDiff > stdDevDirection * 1 || magDiff > stdDevMagnitude * 1) {
-                        coherence = 'Moderado';
-                    }
-                    olFeature.set('coherencia', coherence);
-                    olFeature.set('cluster_id', clusterId);
-                });
-            }
-    
-            // Handle noise features
-            allFeatures.forEach(f => {
-                if (!clusteredFeatureIds.has(f.getId() as string)) {
-                    f.set('coherencia', 'Aislado');
-                    f.set('cluster_id', 'ruido');
-                }
-            });
-    
-        } else { // Global analysis (no clustering)
-            const directions = allFeatures.map(f => f.get('sentido_grados')).filter(d => typeof d === 'number') as number[];
-            const magnitudes = allFeatures.map(f => f.get(coherenceMagnitudeField)).filter(m => typeof m === 'number') as number[];
-    
-            if (directions.length === 0 || magnitudes.length === 0) {
-                toast({ description: 'No hay datos válidos de dirección o magnitud para analizar.', variant: "destructive" });
-                return;
-            }
-    
-            const avgMagnitude = magnitudes.reduce((a, b) => a + b, 0) / magnitudes.length;
-            const avgX = directions.reduce((sum, d) => sum + Math.cos(d * Math.PI / 180), 0) / directions.length;
-            const avgY = directions.reduce((sum, d) => sum + Math.sin(d * Math.PI / 180), 0) / directions.length;
-            const avgAngleRad = Math.atan2(avgY, avgX);
-            const avgDirection = (avgAngleRad * 180 / Math.PI + 360) % 360;
-    
-            const stdDevDirection = Math.sqrt(directions.reduce((sum, d) => {
-                let dirDiff = Math.abs(d - avgDirection);
-                if (dirDiff > 180) dirDiff = 360 - dirDiff;
-                return sum + Math.pow(dirDiff, 2);
-            }, 0) / directions.length);
-            const stdDevMagnitude = Math.sqrt(magnitudes.reduce((sum, s) => sum + Math.pow(s - avgMagnitude, 2), 0) / magnitudes.length);
-            
-            setCoherenceStats({ avgDirection, stdDevDirection, avgMagnitude, stdDevMagnitude });
-    
-            allFeatures.forEach(feature => {
-                const direction = feature.get('sentido_grados');
-                const magnitude = feature.get(coherenceMagnitudeField);
-                let dirDiff = Math.abs(direction - avgDirection);
-                if (dirDiff > 180) dirDiff = 360 - dirDiff;
-                const magDiff = Math.abs(magnitude - avgMagnitude);
-                
-                let coherence = 'Coherente';
-                if (dirDiff > stdDevDirection * 2 || magDiff > stdDevMagnitude * 2) coherence = 'Atípico';
-                else if (dirDiff > stdDevDirection || magDiff > stdDevMagnitude) coherence = 'Moderado';
-                
-                feature.set('coherencia', coherence);
-            });
-            
-            const centerOfMass = centroid(format.writeFeaturesObject(allFeatures));
-            const avgVectorFeature = new Feature({
-                geometry: new Point(transform(centerOfMass.geometry.coordinates, 'EPSG:4326', 'EPSG:3857')),
-            });
-            avgVectorFeature.setProperties({
-                avg_direction: avgDirection,
-                avg_magnitude: avgMagnitude,
-                std_dev_direction: stdDevDirection
-            });
 
-            const newLayerId = `average-vector-${nanoid()}`;
-            const newSource = new VectorSource({ features: [avgVectorFeature] });
-            const avgVectorLayer = new VectorLayer({
-                 source: newSource,
-                 properties: { id: newLayerId, name: 'Vector Promedio (Móvil)', type: 'analysis' },
-                 style: (feature) => {
-                     const geom = feature.getGeometry() as Point;
-                     if (!geom) return [];
+        const avgMag = magnitudes.reduce((a, b) => a + b, 0) / magnitudes.length;
+        const avgDir = directions.reduce((a, b) => a + b, 0) / directions.length;
 
-                     const centerCoords = geom.getCoordinates();
-                     const props = feature.getProperties();
-                     const avgDir = props.avg_direction;
-                     const avgMag = props.avg_magnitude;
-                     const stdDevDir = props.std_dev_direction;
+        allFeatures.forEach(feature => {
+            const mag = feature.get(coherenceMagnitudeField);
+            const dir = feature.get('sentido');
+            const isCoherent = Math.abs(mag - avgMag) < avgMag * 0.5 && Math.abs(dir - avgDir) < 45;
+            feature.set('coherencia', isCoherent ? 'Coherente' : 'Atípico');
+        });
 
-                     const center4326 = transform(centerCoords, 'EPSG:3857', 'EPSG:4326');
-                     const endPoint4326 = destination(center4326, avgMag, avgDir, { units: 'kilometers' }).geometry.coordinates;
-                     const endCoords = transform(endPoint4326, 'EPSG:4326', 'EPSG:3857');
-                     
-                     const lineGeom = new LineString([centerCoords, endCoords]);
-                     const avgAngleRad = Math.atan2(endCoords[1] - centerCoords[1], endCoords[0] - centerCoords[0]);
-
-                     const styles: Style[] = [];
-
-                     // Main vector line
-                     styles.push(new Style({
-                         geometry: lineGeom,
-                         stroke: new Stroke({ color: '#6c757d', width: 3 }),
-                     }));
-
-                     // Arrowhead
-                     styles.push(new Style({
-                         geometry: new Point(endCoords),
-                         image: new RegularShape({
-                             fill: new Fill({ color: '#6c757d' }),
-                             points: 3,
-                             radius: 10,
-                             rotation: -avgAngleRad,
-                             angle: Math.PI / 2,
-                         }),
-                     }));
-
-                     // Label
-                     styles.push(new Style({
-                         geometry: new Point(lineGeom.getCoordinateAt(0.5)),
-                         text: new TextStyle({
-                             text: `${avgMag.toFixed(1)} km/h`,
-                             font: 'bold 12px sans-serif',
-                             fill: new Fill({ color: '#333' }),
-                             stroke: new Stroke({ color: '#fff', width: 3.5 }),
-                             offsetY: -15,
-                         }),
-                     }));
-
-                     // Deviation sectors
-                     [-2, -1, 1, 2].forEach(sigmaMultiplier => {
-                         const angleOffset = sigmaMultiplier * stdDevDir;
-                         const arcRadius = avgMag * 1000 * 0.4;
-
-                         const startAngleRad = avgAngleRad - (angleOffset * Math.PI / 180);
-                         const endAngleRad = avgAngleRad;
-                         
-                         const arcPoints = [];
-                         for(let i=0; i<=20; i++) {
-                             const angle = startAngleRad + (i/20) * (endAngleRad - startAngleRad);
-                             arcPoints.push([
-                                 centerCoords[0] + arcRadius * Math.cos(angle),
-                                 centerCoords[1] + arcRadius * Math.sin(angle)
-                             ]);
-                         }
-                         
-                         const sectorCoords = [centerCoords, ...arcPoints.reverse(), centerCoords];
-                         styles.push(new Style({
-                             geometry: new OlPolygon([sectorCoords]),
-                             fill: new Fill({ color: `rgba(108, 117, 125, ${0.2 - Math.abs(sigmaMultiplier)*0.05})` }),
-                         }));
-                     });
-
-                     return styles;
-                 },
-                 zIndex: 10001,
-            });
-            onAddLayer({
-                id: newLayerId,
-                name: 'Vector Promedio (Móvil)',
-                olLayer: avgVectorLayer,
-                visible: true,
-                opacity: 1,
-                type: 'analysis',
-            }, true);
-            setAverageVectorLayerId(newLayerId);
-        }
-    
         layer.olLayer.setStyle((feature) => {
-            const coherence = feature.get('coherencia');
-            let color = '#3b82f6'; // Azul para Coherente
-            if (coherence === 'Moderado') color = '#facc15'; // Amarillo para Moderado
-            if (coherence === 'Atípico') color = '#ef4444'; // Rojo para Atípico
-            if (coherence === 'Aislado') color = '#9ca3af'; // Gris para Aislado
-    
+            const color = feature.get('coherencia') === 'Coherente' ? '#3b82f6' : '#ef4444';
             return new Style({
                 stroke: new Stroke({ color, width: 2.5 }),
                 image: new CircleStyle({ radius: 4, fill: new Fill({ color }) })
             });
         });
-    
-        source.changed(); // Force redraw
-        onShowTableRequest(
-            source.getFeatures().map(f => ({ id: f.getId() as string, attributes: f.getProperties() })),
-            layer.name,
-            layer.id
-        );
-        toast({ description: `Análisis de coherencia completado.` });
-    };
 
-    // Effect to handle vector movement interaction
-    useEffect(() => {
-        if (!mapRef.current) return;
-        const map = mapRef.current;
-    
-        // Cleanup previous interactions first
-        if (modifyInteractionRef.current) {
-            map.removeInteraction(modifyInteractionRef.current);
-            modifyInteractionRef.current = null;
-        }
-    
-        // Add interaction if an average vector layer exists
-        if (averageVectorLayerId) {
-            const avgVectorLayer = allLayers.find(l => l.id === averageVectorLayerId) as VectorMapLayer | undefined;
-            if (avgVectorLayer) {
-                const source = avgVectorLayer.olLayer.getSource();
-                if (source) {
-                    const modifyInteraction = new Modify({
-                        source: source,
-                        style: new Style(), // Invisible style for modify interaction itself
-                        pixelTolerance: 25, // Increased click tolerance
-                    });
-                    map.addInteraction(modifyInteraction);
-                    modifyInteractionRef.current = modifyInteraction;
-                }
-            }
-        }
-    
-        return () => {
-            if (modifyInteractionRef.current && map) {
-                map.removeInteraction(modifyInteractionRef.current);
-            }
-        };
-    }, [averageVectorLayerId, allLayers, mapRef]);
+        toast({ description: "Análisis de coherencia completado." });
+    };
 
 
     const handleRunFeatureTracking = async () => {
@@ -2235,7 +1885,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     id: newLayerId, 
                     name: outputName, 
                     type: 'analysis',
-                    // Store timestamps for recalculation
                     time1: time1,
                     time2: time2,
                 },
@@ -3097,7 +2746,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                 <Input id="track-output-name" value={trackingOutputName} onChange={(e) => setTrackingOutputName(e.target.value)} placeholder="Ej: Seguimiento_Nucleos" className="h-8 text-xs bg-black/20" />
                             </div>
                             <Button onClick={handleRunFeatureTracking} size="sm" className="w-full h-8 text-xs" disabled={trackingIsLoading || !trackingLayer1Id || !trackingLayer2Id || !trackingField}>
-                                {trackingIsLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="mr-2 h-3.5 w-3.5" />}
+                                {trackingIsLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LocateFixed className="mr-2 h-3.5 w-3.5" />}
                                 Ejecutar Seguimiento
                             </Button>
                         </div>
