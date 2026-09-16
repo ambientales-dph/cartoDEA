@@ -41,9 +41,9 @@ export const initPortalAdminApp = () => {
   const portalApp = admin.apps.find(app => app?.name === 'portal-dea');
   if (portalApp) return portalApp;
 
-  const portalKeyPath = process.env.PORTAL_DEA_SERVICE_ACCOUNT_PATH;
+  const portalKeyPath = process.env.PORTAL_DEA_SERVICE_ACCOUNT_KEY || process.env.PORTAL_DEA_SERVICE_ACCOUNT_PATH;
   if (!portalKeyPath) {
-    console.warn("PORTAL_DEA_SERVICE_ACCOUNT_PATH is not configured. Portal sync will not work.");
+    console.warn("PORTAL_DEA_SERVICE_ACCOUNT_PATH / PORTAL_DEA_SERVICE_ACCOUNT_KEY is not configured. Portal sync will not work.");
     return null;
   }
 
