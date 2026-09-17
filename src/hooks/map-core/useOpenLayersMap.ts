@@ -84,6 +84,13 @@ export const useOpenLayersMap = (options: UseOpenLayersMapOptions = {}) => {
       });
       
       mapRef.current = map;
+
+      if (mapElementRef.current) {
+        map.setTarget(mapElementRef.current);
+        map.updateSize();
+        console.log('useOpenLayersMap: Mapa conectado al DOM en inicialización');
+      }
+
       setIsMapReady(true);
     }
 
@@ -91,15 +98,21 @@ export const useOpenLayersMap = (options: UseOpenLayersMapOptions = {}) => {
       if (mapRef.current) {
         console.log('useOpenLayersMap: Desmontando mapa');
         mapRef.current.setTarget(undefined);
+        mapRef.current = null;
       }
     };
   }, []);
 
-  const setMapInstanceAndElement = useCallback((_map: Map, element: HTMLDivElement) => {
-    if (mapRef.current && element) {
+  const setMapInstanceAndElement = useCallback((_map: Map, element: HTMLDivElement | null) => {
+    if (element) {
       mapElementRef.current = element;
-      mapRef.current.setTarget(element);
-      console.log('useOpenLayersMap: Mapa conectado al DOM');
+      if (mapRef.current) {
+        if (mapRef.current.getTarget() !== element) {
+          mapRef.current.setTarget(element);
+        }
+        mapRef.current.updateSize();
+        console.log('useOpenLayersMap: Mapa conectado al DOM');
+      }
     }
   }, []);
 

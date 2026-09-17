@@ -777,7 +777,12 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       </div>
 
       <div ref={mapAreaRef} className="relative flex-1 overflow-visible">
-        <MapView setMapInstanceAndElement={setMapInstanceAndElement} activeBaseLayerId={activeBaseLayerId} baseLayerSettings={baseLayerSettings} />
+        <MapView 
+          isMapReady={isMapReady}
+          setMapInstanceAndElement={setMapInstanceAndElement} 
+          activeBaseLayerId={activeBaseLayerId} 
+          baseLayerSettings={baseLayerSettings} 
+        />
         
         {isClientMounted && !panels.legend.isMinimized && (
           <LegendPanel
