@@ -15,8 +15,8 @@ import { transformExtent } from 'ol/proj';
 import { useToast } from "@/hooks/use-toast";
 import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData, GeoTiffStyle, LabelOptions } from '@/lib/types';
 import { nanoid } from 'nanoid';
-import { Style, Stroke, Fill, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
 import { bbox as bboxStrategy } from 'ol/loadingstrategy';
+import { exportVectorLayer, exportMultipleVectorLayers, exportWmsOrGeeAsGeotiff } from '@/services/layer-export-service';
 
 const LAYER_START_Z_INDEX = 1000;
 
@@ -543,9 +543,70 @@ export const useLayerManager = ({
   // Clean up intervals on unmount
   useEffect(() => {
     return () => {
-        Object.values(playbackIntervalsRef.current).forEach(clearInterval);
+      Object.values(playbackIntervalsRef.current).forEach(clearInterval);
     };
   }, []);
+
+  const handleExportLayer = useCallback(async (layerId: string, format: 'geojson' | 'kml' | 'shp') => {
+    const layer = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === layerId);
+    if (!layer) {
+      toast({ description: 'No se encontró la capa seleccionada.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      toast({ description: `Preparando exportación de "${layer.name}" a ${format.toUpperCase()}...` });
+      await exportVectorLayer(layer, format);
+      toast({ description: `Capa "${layer.name}" exportada con éxito como ${format.toUpperCase()}.` });
+    } catch (error: any) {
+      console.error(`Error al exportar capa ${layer.name} (${format}):`, error);
+      if (error?.name !== 'AbortError') {
+        toast({
+          title: 'Error de exportación',
+          description: error?.message || `No se pudo exportar la capa como ${format.toUpperCase()}.`,
+          variant: 'destructive',
+        });
+      }
+    }
+  }, [layers, toast]);
+
+  const handleExportLayers = useCallback(async (layersToExport: (VectorLayer<any> | VectorMapLayer | MapLayer)[], baseName: string, format: 'geojson' | 'kml' | 'shp') => {
+    try {
+      toast({ description: `Preparando exportación de ${layersToExport.length} capas a ${format.toUpperCase()}...` });
+      await exportMultipleVectorLayers(layersToExport, baseName, format);
+      toast({ description: `Capas exportadas con éxito como ${format.toUpperCase()}.` });
+    } catch (error: any) {
+      console.error(`Error al exportar múltiples capas (${format}):`, error);
+      if (error?.name !== 'AbortError') {
+        toast({
+          title: 'Error de exportación',
+          description: error?.message || `No se pudieron exportar las capas como ${format.toUpperCase()}.`,
+          variant: 'destructive',
+        });
+      }
+    }
+  }, [toast]);
+
+  const handleExportWmsAsGeotiff = useCallback(async (layerId: string) => {
+    const layer = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === layerId);
+    if (!layer) {
+      toast({ description: 'No se encontró la capa seleccionada.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      toast({ description: `Generando GeoTIFF para "${layer.name}"...` });
+      await exportWmsOrGeeAsGeotiff(layer, mapRef.current);
+      toast({ description: `Descarga de GeoTIFF iniciada para "${layer.name}".` });
+    } catch (error: any) {
+      console.error(`Error al exportar GeoTIFF (${layer.name}):`, error);
+      toast({
+        title: 'Error de exportación GeoTIFF',
+        description: error?.message || 'No se pudo exportar la capa a GeoTIFF.',
+        variant: 'destructive',
+      });
+    }
+  }, [layers, mapRef, toast]);
 
   return {
     layers,
@@ -577,5 +638,8 @@ export const useLayerManager = ({
     renameGroup: (id: string, name: string) => setLayers(prev => prev.map(i => i.id === id ? { ...i, name } : i)),
     toggleGroupPlayback,
     setGroupPlaySpeed,
+    handleExportLayer,
+    handleExportLayers,
+    handleExportWmsAsGeotiff,
   };
 };

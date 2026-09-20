@@ -564,7 +564,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     drawingSourceRef,
     addLayer: layerManagerHook.addLayer,
     osmCategoryConfigs: osmCategoryConfig,
-    onExportLayers: async () => {},
+    onExportLayers: layerManagerHook.handleExportLayers,
   });
 
   const drawingInteractions = useDrawingInteractions({
@@ -801,8 +801,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onExtractByPolygon={handleExtractByPolygon}
             onExtractBySelection={handleExtractBySelection}
             onSelectByLayer={featureInspectionHook.selectByLayer}
-            onExportLayer={() => {}}
-            onExportWmsAsGeotiff={() => {}}
+            onExportLayer={layerManagerHook.handleExportLayer}
+            onExportWmsAsGeotiff={layerManagerHook.handleExportWmsAsGeotiff}
             onRenameLayer={layerManagerHook.renameLayer}
             onChangeLayerStyle={layerManagerHook.changeLayerStyle}
             onChangeLayerLabels={layerManagerHook.onChangeLayerLabels}
