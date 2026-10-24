@@ -99,6 +99,12 @@ export interface GeoServerDiscoveredLayer {
   styleName?: string;
   wmsAddedToMap: boolean;
   wfsAddedToMap: boolean;
+  downloadUrl?: string;
+  storagePath?: string;
+  category?: string;
+  geometryType?: string;
+  featureCount?: number;
+  projectCode?: string;
 }
 
 export interface BaseLayerOptionForSelect {

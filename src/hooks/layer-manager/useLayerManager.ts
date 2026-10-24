@@ -12,6 +12,7 @@ import GeoJSON from 'ol/format/GeoJSON';
 import type Feature from 'ol/Feature';
 import { Geometry } from 'ol/geom';
 import { transformExtent } from 'ol/proj';
+import { Style, Fill, Stroke, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
 import { useToast } from "@/hooks/use-toast";
 import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData, GeoTiffStyle, LabelOptions } from '@/lib/types';
 import { nanoid } from 'nanoid';
@@ -268,8 +269,12 @@ export const useLayerManager = ({
 
     if (layerItem.olLayer instanceof VectorLayer) {
         const source = (layerItem.olLayer as VectorLayer<any>).getSource();
+        const bbox = layerItem.olLayer.get('bbox') as [number, number, number, number] | undefined;
         if (source && source.getFeatures().length > 0) {
             map.getView().fit(source.getExtent(), { padding: [50, 50, 50, 50], duration: 1000 });
+        } else if (bbox) {
+            const extent3857 = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
+            map.getView().fit(extent3857, { padding: [50, 50, 50, 50], duration: 1000 });
         }
     } else if (layerItem.olLayer instanceof TileLayer) {
         const bbox = layerItem.olLayer.get('bbox') as [number, number, number, number] | undefined;
@@ -540,6 +545,111 @@ export const useLayerManager = ({
       return null;
   }, [addLayer]);
 
+  const handleAddGisVectorLayer = useCallback(async (layer: GeoServerDiscoveredLayer) => {
+      const layerId = `gis-${nanoid(8)}`;
+      const portalBase = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+        ? 'http://localhost:9003'
+        : (process.env.NEXT_PUBLIC_PORTAL_URL || 'http://localhost:9003');
+
+      let fullUrl = layer.downloadUrl || '';
+
+      if (fullUrl.startsWith('https://storage.googleapis.com') && layer.projectCode) {
+        const cleanName = layer.name.includes(':') ? layer.name.split(':')[1] : layer.name;
+        fullUrl = `${portalBase}/api/gis/layer?projectCode=${encodeURIComponent(layer.projectCode)}&layerId=${encodeURIComponent(cleanName)}`;
+      } else if (fullUrl.startsWith('/')) {
+        fullUrl = `${portalBase}${fullUrl}`;
+      }
+
+      try {
+        const res = await fetch(fullUrl);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        const geojsonData = await res.json();
+
+        const format = new GeoJSON();
+        const features = format.readFeatures(geojsonData, {
+          dataProjection: 'EPSG:4326',
+          featureProjection: 'EPSG:3857',
+        }) as Feature<Geometry>[];
+
+        features.forEach((feature, idx) => {
+          if (!feature.getId()) {
+            feature.setId(`${layerId}-${idx}`);
+          }
+        });
+
+        const vectorSource = new VectorSource({
+          features,
+        });
+
+        const defaultStyle: StyleOptions = {
+          strokeColor: 'azul',
+          fillColor: 'azul',
+          lineWidth: 2,
+          lineStyle: 'solid',
+          pointSize: 6,
+        };
+
+        const newMapLayer: MapLayer = {
+          id: layerId,
+          name: layer.title,
+          olLayer: null as any,
+          visible: true,
+          opacity: 1,
+          type: 'vector',
+          url: fullUrl,
+          layerName: layer.name,
+          simpleStyle: defaultStyle,
+          geometryType: layer.geometryType,
+          featureCount: features.length,
+        };
+
+        const olLayer = new VectorLayer({
+          source: vectorSource,
+          properties: {
+            id: layerId,
+            name: layer.title,
+            type: 'vector',
+            bbox: layer.bbox,
+            geometryType: layer.geometryType,
+            featureCount: features.length,
+            originalStyleOptions: defaultStyle,
+          },
+        });
+
+        olLayer.setStyle(createLayerStyle(newMapLayer));
+        newMapLayer.olLayer = olLayer;
+
+        addLayer(newMapLayer);
+
+        if (mapRef.current) {
+          const extent = vectorSource.getExtent();
+          if (extent && extent.every(n => Number.isFinite(n))) {
+            mapRef.current.getView().fit(extent, { duration: 900, padding: [60, 60, 60, 60] });
+          } else if (layer.bbox) {
+            const extent3857 = transformExtent(layer.bbox, 'EPSG:4326', 'EPSG:3857');
+            mapRef.current.getView().fit(extent3857, { duration: 900, padding: [60, 60, 60, 60] });
+          }
+        }
+
+        toast({
+          title: 'Capa DEA Agregada',
+          description: `Se cargó "${layer.title}" (${features.length} entidades).`,
+        });
+
+        return olLayer;
+      } catch (err: any) {
+        console.error('[CartoDEA] Error al cargar entidades de la capa:', err);
+        toast({
+          title: 'Error al cargar capa',
+          description: `No se pudieron cargar las entidades de "${layer.title}": ${err.message}`,
+          variant: 'destructive',
+        });
+        return null;
+      }
+  }, [addLayer, createLayerStyle, mapRef, toast]);
+
   // Clean up intervals on unmount
   useEffect(() => {
     return () => {
@@ -628,6 +738,7 @@ export const useLayerManager = ({
     onApplyGeoTiffStyle: (id: string, style: GeoTiffStyle) => {},
     onToggleWmsStyle: (id: string) => {},
     handleAddHybridLayer,
+    handleAddGisVectorLayer,
     addGeeLayerToMap,
     reorderLayers,
     groupLayers,

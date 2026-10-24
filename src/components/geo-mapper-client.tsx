@@ -529,7 +529,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     }
   }, [mapRef, drawingSourceRef, layerManagerHook, toast]);
 
-  const { handleFetchGeoServerLayers, isFetching: isFetchingDeasLayers } =
+  const { handleFetchGeoServerLayers, handleSyncDeasLayers, isFetching: isFetchingDeasLayers } =
     useGeoServerLayers({
       onLayerStateUpdate: (name, added, type) => {
           setDiscoveredGeoServerLayers(prev => prev.map(l => {
@@ -548,15 +548,24 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
 
   useEffect(() => {
     if (initialMapState || !isMapReady) return;
-    const init = async () => {
-        const authGee = await authenticateWithGee();
+    
+    // 1. Carga inmediata de capas DEA desde el repositorio central (todas las cuencas)
+    handleFetchGeoServerLayers(undefined, 'ALL').then((deas) => {
+      if (deas) setDiscoveredGeoServerLayers(deas);
+    });
+
+    // 2. Tareas en segundo plano (GEE y Trello) sin bloquear la interfaz
+    authenticateWithGee()
+      .then((authGee) => {
         setIsGeeAuthenticated(authGee.success);
         setIsGeeAuthenticating(false);
-        checkTrelloCredentials().catch(console.error);
-        const deas = await handleFetchGeoServerLayers('https://www.minfra.gba.gob.ar/ambientales/geoserver');
-        if (deas) setDiscoveredGeoServerLayers(deas);
-    };
-    init();
+      })
+      .catch((e) => {
+        console.warn('[CartoDEA] GEE auth skipped:', e);
+        setIsGeeAuthenticating(false);
+      });
+
+    checkTrelloCredentials().catch(console.error);
   }, [isMapReady, initialMapState, handleFetchGeoServerLayers]);
 
   const osmDataHook = useOSMData({
@@ -827,9 +836,15 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onSetActiveTool={featureInspectionHook.setActiveTool}
             onClearSelection={featureInspectionHook.clearSelection}
             discoveredDeasLayers={discoveredGeoServerLayers}
-            onAddDeasLayer={(l) => layerManagerHook.handleAddHybridLayer(l.name, l.title, 'https://www.minfra.gba.gob.ar/ambientales/geoserver', l.bbox, l.styleName)}
+            onAddDeasLayer={async (l) => {
+              if (l.downloadUrl) {
+                await layerManagerHook.handleAddGisVectorLayer(l);
+              } else {
+                layerManagerHook.handleAddHybridLayer(l.name, l.title, 'https://www.minfra.gba.gob.ar/ambientales/geoserver', l.bbox, l.styleName);
+              }
+            }}
             isFetchingDeasLayers={isFetchingDeasLayers}
-            onReloadDeasLayers={handleFetchGeoServerLayers}
+            onReloadDeasLayers={() => handleFetchGeoServerLayers(undefined, 'ALL')}
             canUndoRemove={layerManagerHook.lastRemovedLayers.length > 0}
             onUndoRemove={layerManagerHook.undoRemove}
             selectedFeaturesForSelection={featureInspectionHook.selectedFeatures}

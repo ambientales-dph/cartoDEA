@@ -87,17 +87,20 @@ export function usePortalAuth() {
     if (token) {
       completePortalSignIn(token);
     } else {
-      // Si no hay token y estamos en desarrollo, logueamos un Mock User anónimo
+      // Si no hay token y estamos en desarrollo, intentamos un Mock User anónimo silencioso
       if (isDev && !auth.currentUser && !syncStartedRef.current) {
-          console.log("usePortalAuth: Iniciando Mock User en desarrollo...");
+          syncStartedRef.current = true;
           signInAnonymously(auth).then(async (cred) => {
               if (cred.user && !cred.user.displayName) {
                   await updateProfile(cred.user, {
                       displayName: "Agente de Desarrollo",
                       photoURL: "https://picsum.photos/seed/dev-user/200"
-                  });
+                  }).catch(() => {});
               }
-          }).catch(err => console.error("Mock login failed:", err));
+          }).catch((err) => {
+              // Silenciar error si el proveedor anónimo no está habilitado en Firebase Console
+              console.warn("[CartoDEA Auth] Mock user anónimo no disponible (requiere habilitar Anonymous Auth en Firebase Console):", err.code || err.message);
+          });
       }
       setIsInitializing(false);
     }
