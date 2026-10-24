@@ -135,10 +135,13 @@ import {
     jenks,
     performFeatureTracking,
     POPULATION_DATA,
+    calculateProfileLayerIntersections,
+    type ProjectedProfileEntity,
 } from '@/services/spatial-analysis';
 import { getValuesForPoints } from '@/ai/flows/gee-flow';
 import { ScrollArea } from '../ui/scroll-area';
 import { Checkbox } from '../ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
     Table,
     TableBody,
@@ -168,6 +171,8 @@ import {
     Area,
     CartesianGrid,
     ReferenceLine,
+    ReferenceDot,
+    ReferenceArea,
     Legend,
     ScatterChart,
     Scatter,
@@ -206,17 +211,31 @@ const SectionHeader: React.FC<{ icon: React.ElementType; title: string; }> = ({ 
 );
 
 const analysisLayerStyle = new Style({
-    stroke: new Stroke({ color: '#ff4500', width: 1 }),
+    stroke: new Stroke({ color: '#ff4500', width: 2.5 }),
     fill: new Fill({ color: 'rgba(255, 69, 0, 0.1)' }),
 });
 
 const profilePointsStyle = new Style({
     image: new CircleStyle({
         radius: 6,
-        fill: new Fill({ color: 'rgba(255, 107, 107, 0.8)' }), 
-        stroke: new Stroke({ color: '#ffffff', width: 1.5 }),
+        fill: new Fill({ color: 'rgba(34, 197, 94, 0.9)' }), 
+        stroke: new Stroke({ color: '#ffffff', width: 2 }),
     }),
 });
+
+interface MarkedProfilePoint {
+    id: string;
+    distance: number;
+    value: number;
+    location: [number, number];
+}
+
+interface HoverProfilePoint {
+    distance: number;
+    value: number;
+    location: [number, number];
+    source: 'chart' | 'map';
+}
 
 type DatasetId = 'NASADEM_ELEVATION' | 'ALOS_DSM' | 'COPERNICUS_DEM' | 'JRC_WATER_OCCURRENCE';
 
@@ -280,6 +299,7 @@ const tooltipStyle = {
     border: '1px solid #ccc',
     color: '#000000',
     fontSize: '12px',
+    pointerEvents: 'none' as const,
 };
 
 
@@ -375,8 +395,11 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const [trackingOutputName, setTrackingOutputName] = useState('');
 
     const [profilePoints, setProfilePoints] = useState<Feature<Point>[]>([]);
-    const profilePointsLayerRef = useRef<VectorLayer<VectorSource<Point>> | null>(null);
-    const profilePointsSourceRef = useRef<VectorSource<Point> | null>(null);
+    const [markedChartPoints, setMarkedChartPoints] = useState<MarkedProfilePoint[]>([]);
+    const [hoverProfilePoint, setHoverProfilePoint] = useState<HoverProfilePoint | null>(null);
+    const [showProjectedLayers, setShowProjectedLayers] = useState<boolean>(true);
+    const profilePointsLayerRef = useRef<VectorLayer<any> | null>(null);
+    const profilePointsSourceRef = useRef<VectorSource<any> | null>(null);
     const [averageVectorLayerId, setAverageVectorLayerId] = useState<string | null>(null);
 
 
@@ -417,6 +440,11 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             profilePointsSourceRef.current.clear();
             setProfilePoints([]);
         }
+        setMarkedChartPoints([]);
+        setHoverProfilePoint(null);
+        if (profileHoverMarkerRef.current) {
+            profileHoverMarkerRef.current.setPosition(undefined);
+        }
         stopDrawing();
         if (showToast) {
             toast({ description: "Análisis de perfil limpiado." });
@@ -427,7 +455,8 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         if (profilePointsSourceRef.current) {
             profilePointsSourceRef.current.clear();
             setProfilePoints([]);
-            toast({ description: "Puntos marcados eliminados del mapa." });
+            setMarkedChartPoints([]);
+            toast({ description: "Puntos marcados eliminados del mapa y del gráfico." });
         }
     }, [toast]);
 
@@ -458,7 +487,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
         if (mapRef.current && !profileHoverMarkerRef.current) {
             const markerElement = document.createElement('div');
-            markerElement.className = 'w-3 h-3 bg-orange-500 rounded-full border-2 border-white shadow-lg pointer-events-none';
+            markerElement.className = 'w-4 h-4 bg-orange-500 rounded-full border-2 border-white shadow-[0_0_10px_rgba(249,115,22,1)] pointer-events-none transition-all duration-75';
             const marker = new Overlay({
                 element: markerElement,
                 positioning: 'center-center',
@@ -600,6 +629,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         setCorrelationResult(null);
         setCorrAxisX('');
         setCorrAxisY('');
+        setMarkedChartPoints([]);
+        setHoverProfilePoint(null);
+        if (profilePointsSourceRef.current) {
+            profilePointsSourceRef.current.clear();
+            setProfilePoints([]);
+        }
         toast({ description: `Generando perfil para ${selectedProfileDatasets.length} dataset(s)...` });
 
         try {
@@ -669,7 +704,8 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     stats.max = Math.max(...validValues);
                     const variance = validValues.reduce((sq, n) => sq + Math.pow(n - stats.mean, 2), 0) / validValues.length;
                     stats.stdDev = Math.sqrt(variance);
-                    stats.jenksBreaks = jenks(validValues, jenksClasses);
+                    const rawBreaks = jenks(validValues, jenksClasses);
+                    stats.jenksBreaks = Array.isArray(rawBreaks) ? rawBreaks.filter((b): b is number => typeof b === 'number' && !isNaN(b)) : [];
                     validValues.sort((a, b) => a - b);
                     const mid = Math.floor(validValues.length / 2);
                     stats.median = validValues.length % 2 !== 0 ? validValues[mid] : (validValues[mid - 1] + validValues[mid]) / 2;
@@ -782,6 +818,68 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             }));
         });
     }, [profileData, yAxisDomainLeft, yAxisDomainRight, combinedChartData]);
+
+    const projectedEntities = useMemo(() => {
+        if (!showProjectedLayers || !profileLine || !combinedChartData || combinedChartData.length === 0) {
+            return [];
+        }
+        const totalDistance = combinedChartData[combinedChartData.length - 1]?.distance || 0;
+        if (totalDistance <= 0) return [];
+
+        return calculateProfileLayerIntersections({
+            profileLineFeature: profileLine,
+            totalLineLengthMeters: totalDistance,
+            layers: allLayers.flat(),
+        });
+    }, [showProjectedLayers, profileLine, combinedChartData, allLayers]);
+
+    const getSnappedRange = useCallback((start: number, end: number): [number, number] => {
+        if (!combinedChartData || combinedChartData.length === 0) return [start, end];
+
+        let bestStartIdx = 0;
+        let minDiffStart = Infinity;
+        let bestEndIdx = combinedChartData.length - 1;
+        let minDiffEnd = Infinity;
+
+        for (let i = 0; i < combinedChartData.length; i++) {
+            const d = combinedChartData[i].distance;
+            const diffS = Math.abs(d - start);
+            if (diffS < minDiffStart) {
+                minDiffStart = diffS;
+                bestStartIdx = i;
+            }
+            const diffE = Math.abs(d - end);
+            if (diffE < minDiffEnd) {
+                minDiffEnd = diffE;
+                bestEndIdx = i;
+            }
+        }
+
+        if (bestStartIdx === bestEndIdx) {
+            if (bestEndIdx < combinedChartData.length - 1) {
+                bestEndIdx++;
+            } else if (bestStartIdx > 0) {
+                bestStartIdx--;
+            }
+        }
+
+        const [i1, i2] = bestStartIdx <= bestEndIdx ? [bestStartIdx, bestEndIdx] : [bestEndIdx, bestStartIdx];
+        return [combinedChartData[i1].distance, combinedChartData[i2].distance];
+    }, [combinedChartData]);
+
+    const getSnappedPoint = useCallback((dist: number): number => {
+        if (!combinedChartData || combinedChartData.length === 0) return dist;
+        let bestIdx = 0;
+        let minDiff = Infinity;
+        for (let i = 0; i < combinedChartData.length; i++) {
+            const diff = Math.abs(combinedChartData[i].distance - dist);
+            if (diff < minDiff) {
+                minDiff = diff;
+                bestIdx = i;
+            }
+        }
+        return combinedChartData[bestIdx].distance;
+    }, [combinedChartData]);
 
     const handleCalculateCorrelation = () => {
         if (!profileData || !corrAxisX || !corrAxisY || corrAxisX === corrAxisY) {
@@ -949,39 +1047,252 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         }
     };
 
-    const handleChartMouseMove = (data: any) => {
-        if (data?.activePayload?.[0]?.payload?.location && profileHoverMarkerRef.current && mapRef.current) {
-            const [lon, lat] = data.activePayload[0].payload.location;
+    const handleChartMouseMove = useCallback((data: any) => {
+        if (!data || !profileHoverMarkerRef.current || !mapRef.current) return;
+
+        let sample: CombinedChartDataPoint | undefined;
+        if (typeof data.activeTooltipIndex === 'number' && combinedChartData[data.activeTooltipIndex]) {
+            sample = combinedChartData[data.activeTooltipIndex];
+        } else if (Array.isArray(data.activePayload) && data.activePayload.length > 0) {
+            const found = data.activePayload.find((p: any) => p?.payload?.location);
+            if (found) sample = found.payload;
+        }
+
+        if (!sample && data.activeLabel !== undefined && combinedChartData.length > 0) {
+            const targetDist = Number(data.activeLabel);
+            if (!isNaN(targetDist)) {
+                let closest = combinedChartData[0];
+                let minDiff = Math.abs(closest.distance - targetDist);
+                for (let i = 1; i < combinedChartData.length; i++) {
+                    const diff = Math.abs(combinedChartData[i].distance - targetDist);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closest = combinedChartData[i];
+                    }
+                }
+                sample = closest;
+            }
+        }
+
+        if (sample && sample.location) {
+            const [lon, lat] = sample.location;
             const mapCoords = transform([lon, lat], 'EPSG:4326', 'EPSG:3857');
             profileHoverMarkerRef.current.setPosition(mapCoords);
-        }
-    };
 
-    const handleChartMouseLeave = () => {
+            const primaryDatasetId = profileData && profileData[0] ? profileData[0].datasetId : undefined;
+            const primaryVal = primaryDatasetId ? (sample[primaryDatasetId] ?? 0) : 0;
+
+            setHoverProfilePoint({
+                distance: sample.distance,
+                value: typeof primaryVal === 'number' ? primaryVal : 0,
+                location: sample.location as [number, number],
+                source: 'chart',
+            });
+        }
+    }, [combinedChartData, profileData, mapRef]);
+
+    const handleChartMouseLeave = useCallback(() => {
         if (profileHoverMarkerRef.current) {
             profileHoverMarkerRef.current.setPosition(undefined);
         }
-    };
+        setHoverProfilePoint(prev => (prev?.source === 'chart' ? null : prev));
+    }, []);
 
     const handleChartClick = useCallback((data: any) => {
-        if (data?.activePayload?.[0]?.payload?.location && profilePointsSourceRef.current && mapRef.current) {
-            const [lon, lat] = data.activePayload[0].payload.location;
+        if (!data || !profilePointsSourceRef.current || !mapRef.current) return;
+
+        let sample: CombinedChartDataPoint | undefined;
+        if (typeof data.activeTooltipIndex === 'number' && combinedChartData[data.activeTooltipIndex]) {
+            sample = combinedChartData[data.activeTooltipIndex];
+        } else if (Array.isArray(data.activePayload) && data.activePayload.length > 0) {
+            const found = data.activePayload.find((p: any) => p?.payload?.location);
+            if (found) sample = found.payload;
+        }
+
+        if (!sample && data.activeLabel !== undefined && combinedChartData.length > 0) {
+            const targetDist = Number(data.activeLabel);
+            if (!isNaN(targetDist)) {
+                let closest = combinedChartData[0];
+                let minDiff = Math.abs(closest.distance - targetDist);
+                for (let i = 1; i < combinedChartData.length; i++) {
+                    const diff = Math.abs(combinedChartData[i].distance - targetDist);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closest = combinedChartData[i];
+                    }
+                }
+                sample = closest;
+            }
+        }
+
+        if (sample && sample.location) {
+            const [lon, lat] = sample.location;
             const mapCoords = transform([lon, lat], 'EPSG:4326', 'EPSG:3857');
 
             const pointFeature = new Feature({
                 geometry: new Point(mapCoords)
             });
-            pointFeature.setId(nanoid());
-            pointFeature.setProperties(data.activePayload.reduce((acc: any, payload: any) => {
-                acc[payload.name] = payload.value;
-                return acc;
-            }, {}));
+            const pointId = nanoid();
+            pointFeature.setId(pointId);
+
+            const primaryDatasetId = profileData && profileData[0] ? profileData[0].datasetId : undefined;
+            const primaryVal = primaryDatasetId ? (sample[primaryDatasetId] ?? 0) : 0;
+
+            const props: Record<string, any> = {
+                distance: sample.distance,
+                distancia_km: (sample.distance / 1000).toFixed(2),
+                location: sample.location,
+                longitud: lon,
+                latitud: lat,
+            };
+            if (profileData) {
+                profileData.forEach(series => {
+                    props[series.name] = sample![series.datasetId];
+                });
+            }
+            pointFeature.setProperties(props);
 
             profilePointsSourceRef.current.addFeature(pointFeature);
             setProfilePoints(prev => [...prev, pointFeature as Feature<Point>]);
-            toast({ description: "Punto marcado en el mapa." });
+            setMarkedChartPoints(prev => [...prev, {
+                id: pointId,
+                distance: sample!.distance,
+                value: typeof primaryVal === 'number' ? primaryVal : 0,
+                location: sample!.location as [number, number],
+            }]);
+            toast({ description: `Punto marcado en perfil (${(sample.distance / 1000).toFixed(2)} km).` });
         }
-    }, [mapRef, toast]);
+    }, [mapRef, profileData, combinedChartData, toast]);
+
+    // Sincronización bidireccional desde el mapa (pointermove y singleclick sobre la traza)
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !profileLine || !profileData || profileData.length === 0 || combinedChartData.length === 0) return;
+
+        const geom = profileLine.getGeometry();
+        if (!geom) return;
+
+        const handleMapPointerMove = (evt: any) => {
+            if (evt.dragging) return;
+            const coordinate = evt.coordinate;
+            const closestPoint = geom.getClosestPoint(coordinate);
+            
+            const pixel = evt.pixel;
+            const closestPixel = map.getPixelFromCoordinate(closestPoint);
+            if (!closestPixel) return;
+
+            const distPx = Math.hypot(pixel[0] - closestPixel[0], pixel[1] - closestPixel[1]);
+
+            if (distPx <= 18) {
+                const [targetLon, targetLat] = transform(closestPoint, 'EPSG:3857', 'EPSG:4326');
+
+                let bestSample = combinedChartData[0];
+                let minGeomDist = Infinity;
+
+                for (const pt of combinedChartData) {
+                    const [pLon, pLat] = pt.location;
+                    const d = Math.hypot(targetLon - pLon, targetLat - pLat);
+                    if (d < minGeomDist) {
+                        minGeomDist = d;
+                        bestSample = pt;
+                    }
+                }
+
+                if (bestSample) {
+                    const mapCoords = transform(bestSample.location, 'EPSG:4326', 'EPSG:3857');
+                    if (profileHoverMarkerRef.current) {
+                        profileHoverMarkerRef.current.setPosition(mapCoords);
+                    }
+                    const primaryDatasetId = profileData[0].datasetId;
+                    const val = bestSample[primaryDatasetId] ?? 0;
+
+                    setHoverProfilePoint({
+                        distance: bestSample.distance,
+                        value: typeof val === 'number' ? val : 0,
+                        location: bestSample.location as [number, number],
+                        source: 'map',
+                    });
+                }
+            } else {
+                setHoverProfilePoint(prev => {
+                    if (prev?.source === 'map') {
+                        if (profileHoverMarkerRef.current) {
+                            profileHoverMarkerRef.current.setPosition(undefined);
+                        }
+                        return null;
+                    }
+                    return prev;
+                });
+            }
+        };
+
+        const handleMapClick = (evt: any) => {
+            const coordinate = evt.coordinate;
+            const closestPoint = geom.getClosestPoint(coordinate);
+            const pixel = evt.pixel;
+            const closestPixel = map.getPixelFromCoordinate(closestPoint);
+            if (!closestPixel) return;
+
+            const distPx = Math.hypot(pixel[0] - closestPixel[0], pixel[1] - closestPixel[1]);
+            if (distPx <= 18 && combinedChartData.length > 0) {
+                const [targetLon, targetLat] = transform(closestPoint, 'EPSG:3857', 'EPSG:4326');
+                let bestSample = combinedChartData[0];
+                let minGeomDist = Infinity;
+
+                for (const pt of combinedChartData) {
+                    const [pLon, pLat] = pt.location;
+                    const d = Math.hypot(targetLon - pLon, targetLat - pLat);
+                    if (d < minGeomDist) {
+                        minGeomDist = d;
+                        bestSample = pt;
+                    }
+                }
+
+                if (bestSample && profilePointsSourceRef.current) {
+                    const mapCoords = transform(bestSample.location, 'EPSG:4326', 'EPSG:3857');
+                    const pointFeature = new Feature({
+                        geometry: new Point(mapCoords)
+                    });
+                    const pointId = nanoid();
+                    pointFeature.setId(pointId);
+
+                    const primaryDatasetId = profileData[0].datasetId;
+                    const primaryValue = bestSample[primaryDatasetId] ?? 0;
+
+                    const props: Record<string, any> = {
+                        distance: bestSample.distance,
+                        distancia_km: (bestSample.distance / 1000).toFixed(2),
+                        location: bestSample.location,
+                        longitud: bestSample.location[0],
+                        latitud: bestSample.location[1],
+                    };
+                    for (const series of profileData) {
+                        props[series.name] = bestSample[series.datasetId];
+                    }
+                    pointFeature.setProperties(props);
+
+                    profilePointsSourceRef.current.addFeature(pointFeature);
+                    setProfilePoints(prev => [...prev, pointFeature as Feature<Point>]);
+                    setMarkedChartPoints(prev => [...prev, {
+                        id: pointId,
+                        distance: bestSample.distance,
+                        value: typeof primaryValue === 'number' ? primaryValue : 0,
+                        location: bestSample.location as [number, number],
+                    }]);
+
+                    toast({ description: `Punto marcado en traza (${(bestSample.distance / 1000).toFixed(2)} km).` });
+                }
+            }
+        };
+
+        map.on('pointermove', handleMapPointerMove);
+        map.on('singleclick', handleMapClick);
+
+        return () => {
+            map.un('pointermove', handleMapPointerMove);
+            map.un('singleclick', handleMapClick);
+        };
+    }, [mapRef, profileLine, profileData, combinedChartData, toast]);
 
     const onConvertProfilePointsToLayer = useCallback(() => {
         if (profilePoints.length === 0) {
@@ -1010,6 +1321,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
         profilePointsSourceRef.current?.clear();
         setProfilePoints([]);
+        setMarkedChartPoints([]);
 
         toast({ description: `Capa "${newLayerName}" creada con ${clonedFeatures.length} puntos.` });
     }, [profilePoints, onAddLayer, toast]);
@@ -2028,6 +2340,26 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                 {isGeneratingProfile ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <LineChart className="mr-2 h-3.5 w-3.5" />}
                                 Generar Perfil(es)
                             </Button>
+                            {profileLine && (
+                                <div className="flex items-center justify-between px-2 py-1.5 bg-black/20 rounded border border-white/5 mt-1">
+                                    <div className="flex items-center space-x-2">
+                                        <Switch
+                                            id="toggle-projected-layers"
+                                            checked={showProjectedLayers}
+                                            onCheckedChange={setShowProjectedLayers}
+                                            className="scale-75 data-[state=checked]:bg-primary"
+                                        />
+                                        <Label htmlFor="toggle-projected-layers" className="text-[11px] cursor-pointer select-none text-gray-300">
+                                            Proyectar capas intersectadas
+                                        </Label>
+                                    </div>
+                                    {projectedEntities.length > 0 && (
+                                        <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-medium">
+                                            {projectedEntities.length} {projectedEntities.length === 1 ? 'entidad' : 'entidades'}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         {profileData && (
                             <div className="pt-2 border-t border-white/10 flex flex-col gap-3">
@@ -2072,14 +2404,14 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                                     formatter={(value: number, name: string) => [`${value.toFixed(2)} ${profileData.find(d => d.datasetId === name)?.unit || ''}`, profileData.find(d => d.datasetId === name)?.name]}
                                                 />
                                                 <Legend wrapperStyle={{ fontSize: "10px", paddingTop: '20px' }} />
-                                                {profileData[0]?.stats.jenksBreaks.map((br, i) => (
+                                                {profileData[0]?.stats.jenksBreaks?.filter((br): br is number => typeof br === 'number' && !isNaN(br)).map((br, i) => (
                                                     <ReferenceLine key={`jenks-left-${i}`} y={br} yAxisId="left" stroke="hsl(var(--muted-foreground))" strokeDasharray="2 2" strokeOpacity={0.7}>
-                                                        <Label value={br.toFixed(1)} position="insideLeft" fontSize={9} fill="hsl(var(--muted-foreground))" />
+                                                        <Label value={typeof br === 'number' ? br.toFixed(1) : ''} position="insideLeft" fontSize={9} fill="hsl(var(--muted-foreground))" />
                                                     </ReferenceLine>
                                                 ))}
-                                                {profileData.length > 1 && profileData[1]?.stats.jenksBreaks.map((br, i) => (
+                                                {profileData.length > 1 && profileData[1]?.stats.jenksBreaks?.filter((br): br is number => typeof br === 'number' && !isNaN(br)).map((br, i) => (
                                                     <ReferenceLine key={`jenks-right-${i}`} y={br} yAxisId="right" stroke="hsl(var(--muted-foreground))" strokeDasharray="2 2" strokeOpacity={0.7}>
-                                                        <Label value={br.toFixed(1)} position="insideRight" fontSize={9} fill="hsl(var(--muted-foreground))" />
+                                                        <Label value={typeof br === 'number' ? br.toFixed(1) : ''} position="insideRight" fontSize={9} fill="hsl(var(--muted-foreground))" />
                                                     </ReferenceLine>
                                                 ))}
                                                 {profileData.map((series, index) => (
@@ -2107,10 +2439,222 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                                         data={combinedHistogramData}
                                                     />
                                                 ))}
+                                                {/* Proyecciones de entidades de capas vectoriales que intersectan la traza (renderizadas SOBRE el perfil) */}
+                                                {showProjectedLayers && projectedEntities.map((entity) => {
+                                                    if (entity.geomType === 'Polygon' && entity.startDistance !== undefined && entity.endDistance !== undefined) {
+                                                        const [x1, x2] = getSnappedRange(entity.startDistance, entity.endDistance);
+                                                        const col = entity.color || '#3b82f6';
+                                                        return (
+                                                            <ReferenceArea
+                                                                key={entity.id}
+                                                                x1={x1}
+                                                                x2={x2}
+                                                                yAxisId="left"
+                                                                isFront={true}
+                                                                ifOverflow="visible"
+                                                                style={{ pointerEvents: 'none' }}
+                                                                shape={(props: any) => {
+                                                                    const { x = 0, y = 5, width = 0, height = 0 } = props;
+                                                                    const finalW = Math.max(width, 10);
+                                                                    const finalH = height > 10 ? height : 210;
+                                                                    const pillW = Math.max(55, Math.min(finalW - 4, 150));
+                                                                    return (
+                                                                        <g className="recharts-reference-area-custom" style={{ pointerEvents: 'none' }}>
+                                                                            <rect
+                                                                                x={x}
+                                                                                y={y}
+                                                                                width={finalW}
+                                                                                height={finalH}
+                                                                                fill={col}
+                                                                                fillOpacity={0.28}
+                                                                            />
+                                                                            <line
+                                                                                x1={x}
+                                                                                y1={y}
+                                                                                x2={x}
+                                                                                y2={y + finalH}
+                                                                                stroke={col}
+                                                                                strokeWidth={2}
+                                                                                strokeDasharray="4 4"
+                                                                                strokeOpacity={0.9}
+                                                                            />
+                                                                            <line
+                                                                                x1={x + finalW}
+                                                                                y1={y}
+                                                                                x2={x + finalW}
+                                                                                y2={y + finalH}
+                                                                                stroke={col}
+                                                                                strokeWidth={2}
+                                                                                strokeDasharray="4 4"
+                                                                                strokeOpacity={0.9}
+                                                                            />
+                                                                            <rect
+                                                                                x={x + 2}
+                                                                                y={y + 2}
+                                                                                width={pillW}
+                                                                                height={17}
+                                                                                rx={3}
+                                                                                fill={col}
+                                                                                fillOpacity={0.92}
+                                                                            />
+                                                                            <text
+                                                                                x={x + 6}
+                                                                                y={y + 14}
+                                                                                fill="#ffffff"
+                                                                                fontSize={10}
+                                                                                fontWeight="bold"
+                                                                                style={{ pointerEvents: 'none', userSelect: 'none' }}
+                                                                            >
+                                                                                {entity.featureName.length > 20 ? `${entity.featureName.substring(0, 18)}...` : entity.featureName}
+                                                                            </text>
+                                                                        </g>
+                                                                    );
+                                                                }}
+                                                            />
+                                                        );
+                                                    }
+                                                    if ((entity.geomType === 'LineString' || entity.geomType === 'Point') && entity.distance !== undefined) {
+                                                        const x = getSnappedPoint(entity.distance);
+                                                        const col = entity.color || '#3b82f6';
+                                                        return (
+                                                            <ReferenceLine
+                                                                key={entity.id}
+                                                                x={x}
+                                                                yAxisId="left"
+                                                                isFront={true}
+                                                                ifOverflow="visible"
+                                                                style={{ pointerEvents: 'none' }}
+                                                                shape={(props: any) => {
+                                                                    const { x1 = 0, y1 = 5, y2 = 215 } = props;
+                                                                    const finalH = Math.abs(y2 - y1) > 10 ? Math.abs(y2 - y1) : 210;
+                                                                    const minY = Math.min(y1, y2);
+                                                                    const pillW = Math.max(50, Math.min(130, entity.featureName.length * 7 + 10));
+                                                                    return (
+                                                                        <g className="recharts-reference-line-custom" style={{ pointerEvents: 'none' }}>
+                                                                            <line
+                                                                                x1={x1}
+                                                                                y1={minY}
+                                                                                x2={x1}
+                                                                                y2={minY + finalH}
+                                                                                stroke={col}
+                                                                                strokeWidth={2.5}
+                                                                                strokeDasharray="4 4"
+                                                                                strokeOpacity={0.95}
+                                                                            />
+                                                                            <rect
+                                                                                x={x1 + 2}
+                                                                                y={minY + 2}
+                                                                                width={pillW}
+                                                                                height={17}
+                                                                                rx={3}
+                                                                                fill={col}
+                                                                                fillOpacity={0.92}
+                                                                            />
+                                                                            <text
+                                                                                x={x1 + 6}
+                                                                                y={minY + 14}
+                                                                                fill="#ffffff"
+                                                                                fontSize={10}
+                                                                                fontWeight="bold"
+                                                                                style={{ pointerEvents: 'none', userSelect: 'none' }}
+                                                                            >
+                                                                                {entity.featureName.length > 18 ? `${entity.featureName.substring(0, 16)}...` : entity.featureName}
+                                                                            </text>
+                                                                        </g>
+                                                                    );
+                                                                }}
+                                                            />
+                                                        );
+                                                    }
+                                                    return null;
+                                                })}
+                                                {/* Marcador dinámico del cursor en hover */}
+                                                {hoverProfilePoint && (
+                                                    <ReferenceLine
+                                                        key="hover-ref-line"
+                                                        x={hoverProfilePoint.distance}
+                                                        stroke="#ff4500"
+                                                        strokeDasharray="3 3"
+                                                        strokeWidth={1.5}
+                                                        yAxisId="left"
+                                                        isFront={true}
+                                                        ifOverflow="visible"
+                                                        style={{ pointerEvents: 'none' }}
+                                                    />
+                                                )}
+                                                {hoverProfilePoint && (
+                                                    <ReferenceDot
+                                                        key="hover-ref-dot"
+                                                        x={hoverProfilePoint.distance}
+                                                        y={hoverProfilePoint.value}
+                                                        yAxisId="left"
+                                                        r={6}
+                                                        fill="#ff4500"
+                                                        stroke="#ffffff"
+                                                        strokeWidth={2}
+                                                        isFront={true}
+                                                        ifOverflow="visible"
+                                                        style={{ pointerEvents: 'none' }}
+                                                        label={hoverProfilePoint.source === 'map' ? {
+                                                            value: `${hoverProfilePoint.value.toFixed(1)} | ${(hoverProfilePoint.distance / 1000).toFixed(1)}km`,
+                                                            position: 'top',
+                                                            fill: '#ff4500',
+                                                            fontSize: 10,
+                                                            fontWeight: 'bold',
+                                                        } : undefined}
+                                                    />
+                                                )}
+                                                {/* Puntos persistentes marcados sobre la curva */}
+                                                {markedChartPoints.map((pt, idx) => (
+                                                    <ReferenceDot
+                                                        key={pt.id}
+                                                        x={pt.distance}
+                                                        y={pt.value}
+                                                        yAxisId="left"
+                                                        r={5}
+                                                        fill="#22c55e"
+                                                        stroke="#ffffff"
+                                                        strokeWidth={2}
+                                                        isFront={true}
+                                                        ifOverflow="visible"
+                                                        style={{ pointerEvents: 'none' }}
+                                                        label={{
+                                                            value: `P${idx + 1}`,
+                                                            position: 'top',
+                                                            fill: '#22c55e',
+                                                            fontSize: 10,
+                                                            fontWeight: 'bold',
+                                                        }}
+                                                    />
+                                                ))}
                                             </AreaChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
+                                {showProjectedLayers && projectedEntities.length > 0 && (
+                                    <div className="p-2 border border-white/10 rounded-md bg-white/5 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-gray-200">Sectores / Entidades Intersectadas</span>
+                                            <span className="text-[10px] text-gray-400">{projectedEntities.length} en traza</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {projectedEntities.map(ent => (
+                                                <div
+                                                    key={ent.id}
+                                                    className="flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded border border-white/10 bg-black/30"
+                                                >
+                                                    <span className="w-2.5 h-2.5 rounded-sm inline-block flex-shrink-0" style={{ backgroundColor: ent.color }} />
+                                                    <span className="text-white font-medium truncate max-w-[130px]" title={ent.featureName}>{ent.featureName}</span>
+                                                    <span className="text-gray-400 text-[10px]">
+                                                        {ent.geomType === 'Polygon' && ent.startDistance !== undefined && ent.endDistance !== undefined
+                                                            ? `(${(ent.startDistance / 1000).toFixed(2)} - ${(ent.endDistance / 1000).toFixed(2)} km)`
+                                                            : `(${(ent.distance! / 1000).toFixed(2)} km)`}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="space-y-2 p-2 border border-white/10 rounded-md">
                                     <Label className="text-xs font-semibold">Dominio del Eje Y</Label>
                                     <Table>
@@ -2129,7 +2673,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                                                     <TableRow><TableCell className="text-xs text-gray-300 p-1">Mín</TableCell><TableCell className="text-xs text-white p-1 text-right font-mono">{series.stats.min.toFixed(2)}</TableCell></TableRow>
                                                     <TableRow><TableCell className="text-xs text-gray-300 p-1">Máx</TableCell><TableCell className="text-xs text-white p-1 text-right font-mono">{series.stats.max.toFixed(2)}</TableCell></TableRow>
                                                     <TableRow><TableCell className="text-xs text-gray-300 p-1">Desv. Est.</TableCell><TableCell className="text-xs text-white p-1 text-right font-mono">{series.stats.stdDev.toFixed(2)}</TableCell></TableRow>
-                                                    <TableRow><TableCell className="text-xs text-gray-300 p-1">Cortes Jenks</TableCell><TableCell className="text-xs text-white p-1 text-right font-mono">{series.stats.jenksBreaks.map(b => b.toFixed(1)).join(', ')}</TableCell></TableRow>
+                                                    <TableRow><TableCell className="text-xs text-gray-300 p-1">Cortes Jenks</TableCell><TableCell className="text-xs text-white p-1 text-right font-mono">{series.stats.jenksBreaks?.filter(b => typeof b === 'number' && !isNaN(b)).map(b => b.toFixed(1)).join(', ') || '-'}</TableCell></TableRow>
                                                 </TableBody>
                                             </Table>
                                         </details>

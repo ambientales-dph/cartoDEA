@@ -99,6 +99,7 @@ import { useOsmQuery } from '@/hooks/osm-integration/useOsmQuery';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { saveUserMap, getUserMaps, saveMapState } from '@/services/sharing-service';
+import { SyncProgressHUD } from '@/components/sync-hud/SyncProgressHUD';
 
 import { useFirestore } from '@/firebase/provider';
 import { useUser } from '@/firebase/auth/use-user';
@@ -396,7 +397,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       lastActiveToolRef.current = activeTool;
     }
   }, [activeTool]);
-
   useEffect(() => {
     if (!isMapReady) return;
 
@@ -419,6 +419,44 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   }, [isMapReady, handleSetActiveTool, mapElementRef]);
 
   const [discoveredGeoServerLayers, setDiscoveredGeoServerLayers] = useState<GeoServerDiscoveredLayer[]>([]);
+  const [activePortalProject, setActivePortalProject] = useState<string | null>(null);
+  const hasAutoLoadedProjectRef = useRef(false);
+
+  // Detección de proyecto activo transferido desde Portal DEA (vía URL o cookie)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParam = new URLSearchParams(window.location.search).get('project');
+      let cookieVal: string | null = null;
+      const match = document.cookie.match(/(?:^|;\s*)portal_active_project=([^;]+)/);
+      if (match) cookieVal = decodeURIComponent(match[1]);
+
+      const pCode = (urlParam || cookieVal || '').trim().toUpperCase();
+      if (pCode) {
+        console.log(`[CartoDEA] Proyecto activo detectado desde Portal DEA: ${pCode}`);
+        setActivePortalProject(pCode);
+        document.cookie = 'portal_active_project=; path=/; max-age=0;';
+      }
+    }
+  }, []);
+
+  // Carga automática de capas del proyecto activo al iniciar si existen capas estandarizadas
+  useEffect(() => {
+    if (!isMapReady || !activePortalProject || discoveredGeoServerLayers.length === 0 || hasAutoLoadedProjectRef.current) {
+      return;
+    }
+
+    hasAutoLoadedProjectRef.current = true;
+    const matchingLayers = discoveredGeoServerLayers.filter(
+      l => (l.projectCode || '').toUpperCase() === activePortalProject
+    );
+
+    if (matchingLayers.length > 0) {
+      console.log(`[CartoDEA] Cargando automáticamente ${matchingLayers.length} capas del proyecto "${activePortalProject}"...`);
+      layerManagerHook.handleLoadProjectLayers(activePortalProject, discoveredGeoServerLayers);
+    } else {
+      console.log(`[CartoDEA] El proyecto "${activePortalProject}" no cuenta con carpeta GIS estandarizada. Se conserva el encuadre inicial.`);
+    }
+  }, [isMapReady, activePortalProject, discoveredGeoServerLayers, layerManagerHook]);
   const [printLayoutImage, setPrintLayoutImage] = useState<string | null>(null);
   const [isGeeAuthenticated, setIsGeeAuthenticated] = useState(false);
   const [isGeeAuthenticating, setIsGeeAuthenticating] = useState(true);
@@ -442,7 +480,6 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       toast({ description: "No hay entidades seleccionadas para extraer." });
       return;
     }
-
     const clonedFeatures = selected.map(f => {
       const clone = f.clone();
       clone.setId(nanoid());
@@ -529,18 +566,24 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     }
   }, [mapRef, drawingSourceRef, layerManagerHook, toast]);
 
-  const { handleFetchGeoServerLayers, isFetching: isFetchingDeasLayers } =
-    useGeoServerLayers({
-      onLayerStateUpdate: (name, added, type) => {
-          setDiscoveredGeoServerLayers(prev => prev.map(l => {
-              if (l.name === name) {
-                  if (type === 'wms') return { ...l, wmsAddedToMap: added };
-                  return { ...l, wfsAddedToMap: added };
-              }
-              return l;
-          }));
-      },
-    });
+  const {
+    handleFetchGeoServerLayers,
+    handleStreamSync,
+    handlePassiveProjectCheck,
+    syncProgress,
+    dismissSyncProgress,
+    isFetching: isFetchingDeasLayers,
+  } = useGeoServerLayers({
+    onLayerStateUpdate: (name, added, type) => {
+        setDiscoveredGeoServerLayers(prev => prev.map(l => {
+            if (l.name === name) {
+                if (type === 'wms') return { ...l, wmsAddedToMap: added };
+                return { ...l, wfsAddedToMap: added };
+            }
+            return l;
+        }));
+    },
+  });
 
   const wfsLibraryPanelProps = useWfsLibrary({
     onAddLayer: (name, title, url, bbox, style) => layerManagerHook.handleAddHybridLayer(name, title, url, bbox, style),
@@ -548,15 +591,24 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
 
   useEffect(() => {
     if (initialMapState || !isMapReady) return;
-    const init = async () => {
-        const authGee = await authenticateWithGee();
+    
+    // 1. Carga inmediata de capas DEA desde el repositorio central (todas las cuencas)
+    handleFetchGeoServerLayers(undefined, 'ALL').then((deas) => {
+      if (deas) setDiscoveredGeoServerLayers(deas);
+    });
+
+    // 2. Tareas en segundo plano (GEE y Trello) sin bloquear la interfaz
+    authenticateWithGee()
+      .then((authGee) => {
         setIsGeeAuthenticated(authGee.success);
         setIsGeeAuthenticating(false);
-        checkTrelloCredentials().catch(console.error);
-        const deas = await handleFetchGeoServerLayers('https://www.minfra.gba.gob.ar/ambientales/geoserver');
-        if (deas) setDiscoveredGeoServerLayers(deas);
-    };
-    init();
+      })
+      .catch((e) => {
+        console.warn('[CartoDEA] GEE auth skipped:', e);
+        setIsGeeAuthenticating(false);
+      });
+
+    checkTrelloCredentials().catch(console.error);
   }, [isMapReady, initialMapState, handleFetchGeoServerLayers]);
 
   const osmDataHook = useOSMData({
@@ -564,7 +616,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     drawingSourceRef,
     addLayer: layerManagerHook.addLayer,
     osmCategoryConfigs: osmCategoryConfig,
-    onExportLayers: async () => {},
+    onExportLayers: layerManagerHook.handleExportLayers,
   });
 
   const drawingInteractions = useDrawingInteractions({
@@ -777,7 +829,12 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       </div>
 
       <div ref={mapAreaRef} className="relative flex-1 overflow-visible">
-        <MapView setMapInstanceAndElement={setMapInstanceAndElement} activeBaseLayerId={activeBaseLayerId} baseLayerSettings={baseLayerSettings} />
+        <MapView 
+          isMapReady={isMapReady}
+          setMapInstanceAndElement={setMapInstanceAndElement} 
+          activeBaseLayerId={activeBaseLayerId} 
+          baseLayerSettings={baseLayerSettings} 
+        />
         
         {isClientMounted && !panels.legend.isMinimized && (
           <LegendPanel
@@ -796,8 +853,8 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onExtractByPolygon={handleExtractByPolygon}
             onExtractBySelection={handleExtractBySelection}
             onSelectByLayer={featureInspectionHook.selectByLayer}
-            onExportLayer={() => {}}
-            onExportWmsAsGeotiff={() => {}}
+            onExportLayer={layerManagerHook.handleExportLayer}
+            onExportWmsAsGeotiff={layerManagerHook.handleExportWmsAsGeotiff}
             onRenameLayer={layerManagerHook.renameLayer}
             onChangeLayerStyle={layerManagerHook.changeLayerStyle}
             onChangeLayerLabels={layerManagerHook.onChangeLayerLabels}
@@ -822,9 +879,19 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onSetActiveTool={featureInspectionHook.setActiveTool}
             onClearSelection={featureInspectionHook.clearSelection}
             discoveredDeasLayers={discoveredGeoServerLayers}
-            onAddDeasLayer={(l) => layerManagerHook.handleAddHybridLayer(l.name, l.title, 'https://www.minfra.gba.gob.ar/ambientales/geoserver', l.bbox, l.styleName)}
+            onAddDeasLayer={async (l) => {
+              if (l.downloadUrl) {
+                await layerManagerHook.handleAddGisVectorLayer(l);
+              } else {
+                layerManagerHook.handleAddHybridLayer(l.name, l.title, 'https://www.minfra.gba.gob.ar/ambientales/geoserver', l.bbox, l.styleName);
+              }
+            }}
             isFetchingDeasLayers={isFetchingDeasLayers}
-            onReloadDeasLayers={handleFetchGeoServerLayers}
+            onReloadDeasLayers={() => handleFetchGeoServerLayers(undefined, 'ALL')}
+            onSyncProject={(pCode) => handleStreamSync(pCode)}
+            onPassiveCheckProject={(pCode) => handlePassiveProjectCheck(pCode)}
+            syncingProjectCode={syncProgress.active ? syncProgress.projectCode : undefined}
+            initialActiveProject={activePortalProject || undefined}
             canUndoRemove={layerManagerHook.lastRemovedLayers.length > 0}
             onUndoRemove={layerManagerHook.undoRemove}
             selectedFeaturesForSelection={featureInspectionHook.selectedFeatures}
@@ -1039,6 +1106,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         </AlertDialogContent>
       </AlertDialog>
 
+      <SyncProgressHUD progress={syncProgress} onDismiss={dismissSyncProgress} />
     </div>
   );
 }

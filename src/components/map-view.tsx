@@ -11,10 +11,11 @@ import type { Layer } from 'ol/layer';
 import type { BaseLayerSettings } from '@/lib/types';
 
 interface MapViewProps {
-  setMapInstanceAndElement: (map: OLMap, element: HTMLDivElement) => void;
+  setMapInstanceAndElement: (map: OLMap, element: HTMLDivElement | null) => void;
   onMapClick?: (event: any) => void; 
   activeBaseLayerId?: string; 
   baseLayerSettings: BaseLayerSettings;
+  isMapReady?: boolean;
 }
 
 export type Band = 'red' | 'green' | 'blue' | 'false-color-vegetation' | 'false-color-urban' | 'none';
@@ -86,21 +87,41 @@ export const BASE_LAYER_DEFINITIONS: readonly BaseLayerDefinition[] = [
   { id: 'esri-blue', name: 'ESRI - Banda Azul', band: 'blue', parentLayerId: 'esri-satellite' },
 ] as const;
 
-const MapView: React.FC<MapViewProps> = ({ setMapInstanceAndElement, activeBaseLayerId, baseLayerSettings }) => {
-  const mapElementRef = useRef<HTMLDivElement>(null);
-  const baseLayersInitializedRef = useRef(false);
+const MapView: React.FC<MapViewProps> = ({ setMapInstanceAndElement, activeBaseLayerId, baseLayerSettings, isMapReady }) => {
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
 
+  // Callback ref para asegurar que el elemento DOM se asigne inmediatamente en el render
+  const setContainerRef = (element: HTMLDivElement | null) => {
+    mapElementRef.current = element;
+    if (element) {
+      const dummyMap = new OLMap({});
+      setMapInstanceAndElement(dummyMap, element);
+    }
+  };
+
+  // Efecto de respaldo cuando isMapReady cambia o el componente se monta
   useEffect(() => {
     if (!mapElementRef.current) return;
-    
-    // El mapa ya viene creado desde el hook useOpenLayersMap.
-    // Solo le asignamos el elemento del DOM.
-    // dummy map for ref
     const dummyMap = new OLMap({}); 
     setMapInstanceAndElement(dummyMap, mapElementRef.current);
-  }, [setMapInstanceAndElement]);
+  }, [setMapInstanceAndElement, isMapReady]);
 
-  return <div ref={mapElementRef} className="w-full h-full bg-gray-200" />;
+  // ResizeObserver para asegurar que OpenLayers recalcule dimensiones cuando el contenedor flex termine de renderizar
+  useEffect(() => {
+    const el = mapElementRef.current;
+    if (!el) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    resizeObserver.observe(el);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  return <div ref={setContainerRef} className="w-full h-full bg-gray-200" />;
 };
 
 export default MapView;

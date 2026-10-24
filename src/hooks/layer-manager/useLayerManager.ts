@@ -12,11 +12,12 @@ import GeoJSON from 'ol/format/GeoJSON';
 import type Feature from 'ol/Feature';
 import { Geometry } from 'ol/geom';
 import { transformExtent } from 'ol/proj';
+import { Style, Fill, Stroke, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
 import { useToast } from "@/hooks/use-toast";
-import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData, GeoTiffStyle, LabelOptions } from '@/lib/types';
+import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData, GeoTiffStyle, LabelOptions, GeoServerDiscoveredLayer } from '@/lib/types';
 import { nanoid } from 'nanoid';
-import { Style, Stroke, Fill, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
 import { bbox as bboxStrategy } from 'ol/loadingstrategy';
+import { exportVectorLayer, exportMultipleVectorLayers, exportWmsOrGeeAsGeotiff } from '@/services/layer-export-service';
 
 const LAYER_START_Z_INDEX = 1000;
 
@@ -268,8 +269,13 @@ export const useLayerManager = ({
 
     if (layerItem.olLayer instanceof VectorLayer) {
         const source = (layerItem.olLayer as VectorLayer<any>).getSource();
+        const bbox = layerItem.olLayer.get('bbox') as [number, number, number, number] | undefined;
         if (source && source.getFeatures().length > 0) {
             map.getView().fit(source.getExtent(), { padding: [50, 50, 50, 50], duration: 1000 });
+        } else if (bbox) {
+            const extent3857 = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
+            map.getView().fit(extent3857, { padding: [50, 50, 50, 50], duration: 1000 });
+        }
         }
     } else if (layerItem.olLayer instanceof TileLayer) {
         const bbox = layerItem.olLayer.get('bbox') as [number, number, number, number] | undefined;
@@ -540,12 +546,239 @@ export const useLayerManager = ({
       return null;
   }, [addLayer]);
 
+  const handleAddGisVectorLayer = useCallback(async (
+    layer: GeoServerDiscoveredLayer,
+    options?: { skipFit?: boolean; skipToast?: boolean }
+  ) => {
+      const layerId = `gis-${nanoid(8)}`;
+      const portalBase = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+        ? 'http://localhost:9003'
+        : (process.env.NEXT_PUBLIC_PORTAL_URL || 'http://localhost:9003');
+
+      let fullUrl = layer.downloadUrl || '';
+
+      if (fullUrl.startsWith('https://storage.googleapis.com') && layer.projectCode) {
+        const cleanName = layer.name.includes(':') ? layer.name.split(':')[1] : layer.name;
+        fullUrl = `${portalBase}/api/gis/layer?projectCode=${encodeURIComponent(layer.projectCode)}&layerId=${encodeURIComponent(cleanName)}`;
+      } else if (fullUrl.startsWith('/')) {
+        fullUrl = `${portalBase}${fullUrl}`;
+      }
+
+      try {
+        const res = await fetch(fullUrl);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        const geojsonData = await res.json();
+
+        const format = new GeoJSON();
+        const features = format.readFeatures(geojsonData, {
+          dataProjection: 'EPSG:4326',
+          featureProjection: 'EPSG:3857',
+        }) as Feature<Geometry>[];
+
+        features.forEach((feature, idx) => {
+          if (!feature.getId()) {
+            feature.setId(`${layerId}-${idx}`);
+          }
+        });
+
+        const vectorSource = new VectorSource({
+          features,
+        });
+
+        const defaultStyle: StyleOptions = {
+          strokeColor: 'azul',
+          fillColor: 'azul',
+          lineWidth: 2,
+          lineStyle: 'solid',
+          pointSize: 6,
+        };
+
+        const newMapLayer: MapLayer = {
+          id: layerId,
+          name: layer.title,
+          olLayer: null as any,
+          visible: true,
+          opacity: 1,
+          type: 'vector',
+          url: fullUrl,
+          layerName: layer.name,
+          simpleStyle: defaultStyle,
+          geometryType: layer.geometryType,
+          featureCount: features.length,
+        };
+
+        const olLayer = new VectorLayer({
+          source: vectorSource,
+          properties: {
+            id: layerId,
+            name: layer.title,
+            type: 'vector',
+            bbox: layer.bbox,
+            geometryType: layer.geometryType,
+            featureCount: features.length,
+            originalStyleOptions: defaultStyle,
+          },
+        });
+
+        olLayer.setStyle(createLayerStyle(newMapLayer));
+        newMapLayer.olLayer = olLayer;
+
+        addLayer(newMapLayer);
+
+        if (!options?.skipFit && mapRef.current) {
+          const extent = vectorSource.getExtent();
+          if (extent && extent.every(n => Number.isFinite(n))) {
+            mapRef.current.getView().fit(extent, { duration: 900, padding: [60, 60, 60, 60] });
+          } else if (layer.bbox) {
+            const extent3857 = transformExtent(layer.bbox, 'EPSG:4326', 'EPSG:3857');
+            mapRef.current.getView().fit(extent3857, { duration: 900, padding: [60, 60, 60, 60] });
+          }
+        }
+
+        if (!options?.skipToast) {
+          toast({
+            title: 'Capa DEA Agregada',
+            description: `Se cargó "${layer.title}" (${features.length} entidades).`,
+          });
+        }
+
+        return olLayer;
+      } catch (err: any) {
+        console.error('[CartoDEA] Error al cargar entidades de la capa:', err);
+        if (!options?.skipToast) {
+          toast({
+            title: 'Error al cargar capa',
+            description: `No se pudieron cargar las entidades de "${layer.title}": ${err.message}`,
+            variant: 'destructive',
+          });
+        }
+        return null;
+      }
+  }, [addLayer, mapRef, toast]);
+
+  const handleLoadProjectLayers = useCallback(async (
+    projectCode: string,
+    allDiscoveredLayers: GeoServerDiscoveredLayer[]
+  ) => {
+    const targetCode = projectCode.toUpperCase().trim();
+    const projectLayers = allDiscoveredLayers.filter(
+      l => (l.projectCode || '').toUpperCase() === targetCode
+    );
+
+    if (projectLayers.length === 0) {
+      console.log(`[CartoDEA] No se encontraron capas estandarizadas para el proyecto "${targetCode}". Se conserva el encuadre inicial.`);
+      return;
+    }
+
+    console.log(`[CartoDEA] Cargando automáticamente ${projectLayers.length} capas del proyecto activo "${targetCode}"...`);
+
+    const loadedExtents: number[][] = [];
+
+    const results = await Promise.allSettled(
+      projectLayers.map(l => handleAddGisVectorLayer(l, { skipFit: true, skipToast: true }))
+    );
+
+    results.forEach((res, idx) => {
+      if (res.status === 'fulfilled' && res.value) {
+        const olLayer = res.value;
+        const source = olLayer.getSource();
+        const extent = source?.getExtent();
+        if (extent && extent.every(n => Number.isFinite(n))) {
+          loadedExtents.push(extent);
+        } else if (projectLayers[idx].bbox) {
+          const extent3857 = transformExtent(projectLayers[idx].bbox!, 'EPSG:4326', 'EPSG:3857');
+          if (extent3857.every(n => Number.isFinite(n))) {
+            loadedExtents.push(extent3857);
+          }
+        }
+      }
+    });
+
+    if (loadedExtents.length > 0 && mapRef.current) {
+      const combinedExtent = [
+        Math.min(...loadedExtents.map(e => e[0])),
+        Math.min(...loadedExtents.map(e => e[1])),
+        Math.max(...loadedExtents.map(e => e[2])),
+        Math.max(...loadedExtents.map(e => e[3])),
+      ];
+      mapRef.current.getView().fit(combinedExtent, { duration: 1200, padding: [80, 80, 80, 80] });
+    }
+
+    toast({
+      title: `Proyecto ${targetCode}`,
+      description: `Se cargaron ${loadedExtents.length} capas cartográficas del proyecto activo.`,
+    });
+  }, [handleAddGisVectorLayer, mapRef, toast]);
+
   // Clean up intervals on unmount
   useEffect(() => {
     return () => {
-        Object.values(playbackIntervalsRef.current).forEach(clearInterval);
+      Object.values(playbackIntervalsRef.current).forEach(clearInterval);
     };
   }, []);
+
+  const handleExportLayer = useCallback(async (layerId: string, format: 'geojson' | 'kml' | 'shp') => {
+    const layer = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === layerId);
+    if (!layer) {
+      toast({ description: 'No se encontró la capa seleccionada.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      toast({ description: `Preparando exportación de "${layer.name}" a ${format.toUpperCase()}...` });
+      await exportVectorLayer(layer, format);
+      toast({ description: `Capa "${layer.name}" exportada con éxito como ${format.toUpperCase()}.` });
+    } catch (error: any) {
+      console.error(`Error al exportar capa ${layer.name} (${format}):`, error);
+      if (error?.name !== 'AbortError') {
+        toast({
+          title: 'Error de exportación',
+          description: error?.message || `No se pudo exportar la capa como ${format.toUpperCase()}.`,
+          variant: 'destructive',
+        });
+      }
+    }
+  }, [layers, toast]);
+
+  const handleExportLayers = useCallback(async (layersToExport: (VectorLayer<any> | VectorMapLayer | MapLayer)[], baseName: string, format: 'geojson' | 'kml' | 'shp') => {
+    try {
+      toast({ description: `Preparando exportación de ${layersToExport.length} capas a ${format.toUpperCase()}...` });
+      await exportMultipleVectorLayers(layersToExport, baseName, format);
+      toast({ description: `Capas exportadas con éxito como ${format.toUpperCase()}.` });
+    } catch (error: any) {
+      console.error(`Error al exportar múltiples capas (${format}):`, error);
+      if (error?.name !== 'AbortError') {
+        toast({
+          title: 'Error de exportación',
+          description: error?.message || `No se pudieron exportar las capas como ${format.toUpperCase()}.`,
+          variant: 'destructive',
+        });
+      }
+    }
+  }, [toast]);
+
+  const handleExportWmsAsGeotiff = useCallback(async (layerId: string) => {
+    const layer = layers.flatMap(i => 'layers' in i ? i.layers : [i]).find(l => l.id === layerId);
+    if (!layer) {
+      toast({ description: 'No se encontró la capa seleccionada.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      toast({ description: `Generando GeoTIFF para "${layer.name}"...` });
+      await exportWmsOrGeeAsGeotiff(layer, mapRef.current);
+      toast({ description: `Descarga de GeoTIFF iniciada para "${layer.name}".` });
+    } catch (error: any) {
+      console.error(`Error al exportar GeoTIFF (${layer.name}):`, error);
+      toast({
+        title: 'Error de exportación GeoTIFF',
+        description: error?.message || 'No se pudo exportar la capa a GeoTIFF.',
+        variant: 'destructive',
+      });
+    }
+  }, [layers, mapRef, toast]);
 
   return {
     layers,
@@ -567,6 +800,8 @@ export const useLayerManager = ({
     onApplyGeoTiffStyle: (id: string, style: GeoTiffStyle) => {},
     onToggleWmsStyle: (id: string) => {},
     handleAddHybridLayer,
+    handleAddGisVectorLayer,
+    handleLoadProjectLayers,
     addGeeLayerToMap,
     reorderLayers,
     groupLayers,
@@ -577,5 +812,8 @@ export const useLayerManager = ({
     renameGroup: (id: string, name: string) => setLayers(prev => prev.map(i => i.id === id ? { ...i, name } : i)),
     toggleGroupPlayback,
     setGroupPlaySpeed,
+    handleExportLayer,
+    handleExportLayers,
+    handleExportWmsAsGeotiff,
   };
 };

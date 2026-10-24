@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Encode_Sans, Encode_Sans_Condensed } from 'next/font/google';
+import 'ol/ol.css';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { FirebaseClientProvider } from '@/firebase/client-provider';

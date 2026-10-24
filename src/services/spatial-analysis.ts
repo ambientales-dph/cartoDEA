@@ -1,38 +1,62 @@
 "use client";
 
 import type { Feature as TurfFeature, Polygon as TurfPolygon, MultiPolygon as TurfMultiPolygon, FeatureCollection as TurfFeatureCollection, Geometry as TurfGeometry, Point as TurfPoint, LineString as TurfLineString } from 'geojson';
-import { area as turfArea, intersect, featureCollection, buffer as turfBuffer, union, convex, concave, nearestPoint as turfNearestPoint, along, length as turfLength, bearing, destination, bezierSpline, centroid, distance as turfDistance } from '@turf/turf';
+import {
+    area as turfArea,
+    intersect,
+    featureCollection,
+    buffer as turfBuffer,
+    union,
+    convex,
+    concave,
+    nearestPoint as turfNearestPoint,
+    along as turfAlong,
+    length as turfLength,
+    bearing,
+    destination,
+    bezierSpline,
+    centroid,
+    distance as turfDistance,
+    booleanIntersects as turfBooleanIntersects,
+    lineIntersect as turfLineIntersect,
+    booleanPointInPolygon as turfBooleanPointInPolygon,
+    nearestPointOnLine as turfNearestPointOnLine,
+    pointToLineDistance as turfPointToLineDistance,
+    point as turfPointHelper
+} from '@turf/turf';
 import { multiPolygon, lineString as turfLineString, polygon as turfPolygon } from '@turf/helpers';
 import type Feature from 'ol/Feature';
 import GeoJSON from 'ol/format/GeoJSON';
 import type { Geometry, LineString as OlLineString } from 'ol/geom';
+import { intersects as olIntersectsExtent } from 'ol/extent';
 import { nanoid } from 'nanoid';
 
 
 // --- Jenks Natural Breaks Algorithm (Moved Here) ---
 export function jenks(data: number[], n_classes: number): number[] {
-  if (n_classes > data.length) return [];
+  if (!Array.isArray(data) || n_classes > data.length || n_classes <= 1) return [];
 
-  data = data.slice().sort((a, b) => a - b);
+  const cleanData = data.filter(d => typeof d === 'number' && !isNaN(d)).sort((a, b) => a - b);
+  if (cleanData.length < n_classes) return [];
 
   const matrices = (() => {
-    const mat1 = Array(data.length + 1).fill(0).map(() => Array(n_classes + 1).fill(0));
-    const mat2 = Array(data.length + 1).fill(0).map(() => Array(n_classes + 1).fill(0));
+    const mat1 = Array(cleanData.length + 1).fill(0).map(() => Array(n_classes + 1).fill(0));
+    const mat2 = Array(cleanData.length + 1).fill(0).map(() => Array(n_classes + 1).fill(0));
     
     for (let i = 1; i <= n_classes; i++) {
         mat1[1][i] = 1;
         mat2[1][i] = 0;
-        for (let j = 2; j <= data.length; j++) {
+        for (let j = 2; j <= cleanData.length; j++) {
             mat2[j][i] = Infinity;
         }
     }
 
     let v = 0.0;
-    for (let l = 2; l <= data.length; l++) {
+    for (let l = 2; l <= cleanData.length; l++) {
         let s1 = 0.0, s2 = 0.0, w = 0.0;
         for (let m = 1; m <= l; m++) {
             const i4 = l - m + 1;
-            const val = data[i4 - 1];
+            const val = cleanData[i4 - 1];
             w++;
             s1 += val;
             s2 += val * val;
@@ -54,14 +78,18 @@ export function jenks(data: number[], n_classes: number): number[] {
   })();
 
   const { backlinkMatrix } = matrices;
-  const breaks = [];
-  let k = data.length;
+  const breaks: number[] = [];
+  let k = cleanData.length;
   for (let i = n_classes; i > 1; i--) {
-    breaks.push(data[backlinkMatrix[k][i] - 2]);
-    k = backlinkMatrix[k][i] - 1;
+    const idx = (backlinkMatrix[k]?.[i] ?? 0) - 2;
+    if (idx >= 0 && idx < cleanData.length) {
+      breaks.push(cleanData[idx]);
+    }
+    k = (backlinkMatrix[k]?.[i] ?? 1) - 1;
+    if (k < 1) break;
   }
   
-  return breaks.reverse();
+  return breaks.filter((b): b is number => typeof b === 'number' && !isNaN(b)).reverse();
 }
 
 // --- Dataset Definitions (Moved Here) ---
@@ -568,4 +596,233 @@ export async function performFeatureTracking({
     }
 
     return trajectoryFeatures;
+}
+
+export interface ProjectedProfileEntity {
+    id: string;
+    layerId: string;
+    layerName: string;
+    featureName: string;
+    geomType: 'Polygon' | 'LineString' | 'Point';
+    startDistance?: number;
+    endDistance?: number;
+    distance?: number;
+    color: string;
+}
+
+function parseOlColor(color: any): string | null {
+    if (!color) return null;
+    if (typeof color === 'string') {
+        const lower = color.toLowerCase().trim();
+        if (lower === 'transparent' || lower === 'rgba(0,0,0,0)' || lower === 'rgba(0, 0, 0, 0)') return null;
+        return color;
+    }
+    if (Array.isArray(color) && color.length >= 3) {
+        const [r, g, b, a] = color;
+        if (a !== undefined && a === 0) return null;
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+    return null;
+}
+
+function extractLayerColor(layer: any, fallbackIndex: number): string {
+    const PALETTE = ['#3b82f6', '#10b981', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#eab308'];
+    try {
+        const style = layer.olLayer?.getStyle?.();
+        let styleObj = style;
+        if (typeof style === 'function') {
+            const source = layer.olLayer?.getSource?.();
+            const firstFeat = source?.getFeatures?.()?.[0];
+            if (firstFeat) {
+                styleObj = style(firstFeat, 1);
+            }
+        }
+        if (Array.isArray(styleObj)) styleObj = styleObj[0];
+        if (styleObj) {
+            const stroke = styleObj.getStroke?.();
+            const strokeColor = parseOlColor(stroke?.getColor?.());
+            if (strokeColor) return strokeColor;
+
+            const fill = styleObj.getFill?.();
+            const fillColor = parseOlColor(fill?.getColor?.());
+            if (fillColor) return fillColor;
+        }
+    } catch {
+        // ignore style parsing error
+    }
+    return PALETTE[fallbackIndex % PALETTE.length];
+}
+
+function extractFeatureName(feature: Feature<Geometry>, layerName: string, index: number): string {
+    const props = feature.getProperties();
+    const nameKeys = ['name', 'nombre', 'title', 'titulo', 'label', 'etiqueta', 'id', 'description', 'descripcion', 'identificador'];
+    for (const key of nameKeys) {
+        const val = props[key];
+        if (typeof val === 'string' && val.trim().length > 0 && val.length < 40) {
+            return val.trim();
+        }
+        if (typeof val === 'number') {
+            return `${key}: ${val}`;
+        }
+    }
+    return `${layerName} #${index + 1}`;
+}
+
+/**
+ * Calculates intersections of visible vector layers with the profile line
+ * and projects them onto the profile's distance axis.
+ */
+export function calculateProfileLayerIntersections({
+    profileLineFeature,
+    totalLineLengthMeters,
+    layers,
+}: {
+    profileLineFeature: Feature<OlLineString>;
+    totalLineLengthMeters: number;
+    layers: any[];
+}): ProjectedProfileEntity[] {
+    if (!profileLineFeature || totalLineLengthMeters <= 0 || !layers || layers.length === 0) {
+        return [];
+    }
+
+    const profileGeom = profileLineFeature.getGeometry();
+    if (!profileGeom) return [];
+
+    const geojsonFormat = new GeoJSON();
+    let profileGeoJSON: TurfFeature<TurfLineString>;
+    try {
+        profileGeoJSON = geojsonFormat.writeFeatureObject(profileLineFeature, {
+            featureProjection: 'EPSG:3857',
+            dataProjection: 'EPSG:4326',
+        }) as TurfFeature<TurfLineString>;
+    } catch (err) {
+        console.error("Error converting profile line to GeoJSON:", err);
+        return [];
+    }
+
+    const turfTotalLen = turfLength(profileGeoJSON, { units: 'meters' });
+    if (turfTotalLen <= 0) return [];
+
+    const scaleFactor = totalLineLengthMeters / turfTotalLen;
+    const results: ProjectedProfileEntity[] = [];
+    const coords = profileGeoJSON.geometry.coordinates;
+    const startPt = turfPointHelper(coords[0]);
+    const endPt = turfPointHelper(coords[coords.length - 1]);
+
+    let layerColorIndex = 0;
+
+    for (const layer of layers) {
+        if (!layer || layer.visible === false) continue;
+        if (layer.id === 'internal-analysis-profile-layer' || layer.id === 'internal-profile-points-layer') continue;
+        if (layer.type === 'wms' || layer.type === 'gee' || layer.type === 'geotiff') continue;
+
+        const source = layer.olLayer?.getSource?.();
+        if (!source) continue;
+
+        const features: Feature<Geometry>[] = source.getFeatures?.() || [];
+        if (features.length === 0) continue;
+
+        const layerColor = extractLayerColor(layer, layerColorIndex++);
+        const profileExtent = profileGeom.getExtent();
+
+        features.forEach((feature, fIdx) => {
+            const featGeom = feature.getGeometry();
+            if (!featGeom) return;
+
+            // Fast bounding box check
+            if (!olIntersectsExtent(profileExtent, featGeom.getExtent())) return;
+
+            let featGeoJSON: TurfFeature<any>;
+            try {
+                featGeoJSON = geojsonFormat.writeFeatureObject(feature, {
+                    featureProjection: 'EPSG:3857',
+                    dataProjection: 'EPSG:4326',
+                }) as TurfFeature<any>;
+            } catch {
+                return;
+            }
+
+            if (!featGeoJSON || !featGeoJSON.geometry) return;
+            const gType = featGeoJSON.geometry.type;
+            const featName = extractFeatureName(feature, layer.name || 'Capa', fIdx);
+
+            if (gType === 'Polygon' || gType === 'MultiPolygon') {
+                if (turfBooleanIntersects(profileGeoJSON, featGeoJSON)) {
+                    const rawDistances: number[] = [];
+                    if (turfBooleanPointInPolygon(startPt, featGeoJSON)) rawDistances.push(0);
+                    if (turfBooleanPointInPolygon(endPt, featGeoJSON)) rawDistances.push(turfTotalLen);
+
+                    const intersects = turfLineIntersect(profileGeoJSON, featGeoJSON);
+                    for (const ptFeat of intersects.features) {
+                        const loc = turfNearestPointOnLine(profileGeoJSON, ptFeat, { units: 'meters' }).properties.location;
+                        if (typeof loc === 'number' && !isNaN(loc)) {
+                            rawDistances.push(loc);
+                        }
+                    }
+
+                    const sorted = Array.from(new Set(rawDistances.map(d => Math.round(d * 10) / 10))).sort((a, b) => a - b);
+                    for (let i = 0; i < sorted.length - 1; i++) {
+                        const dStart = sorted[i];
+                        const dEnd = sorted[i + 1];
+                        if (dEnd - dStart < 1) continue;
+                        const dMid = (dStart + dEnd) / 2;
+                        const midPt = turfAlong(profileGeoJSON, dMid, { units: 'meters' });
+                        if (turfBooleanPointInPolygon(midPt, featGeoJSON)) {
+                            results.push({
+                                id: `${layer.id}-${feature.getId() || fIdx}-${i}`,
+                                layerId: layer.id,
+                                layerName: layer.name,
+                                featureName: featName,
+                                geomType: 'Polygon',
+                                startDistance: Math.max(0, dStart * scaleFactor),
+                                endDistance: Math.min(totalLineLengthMeters, dEnd * scaleFactor),
+                                color: layerColor,
+                            });
+                        }
+                    }
+                }
+            } else if (gType === 'LineString' || gType === 'MultiLineString') {
+                if (turfBooleanIntersects(profileGeoJSON, featGeoJSON)) {
+                    const crossings = turfLineIntersect(profileGeoJSON, featGeoJSON);
+                    crossings.features.forEach((ptFeat: any, cIdx: number) => {
+                        const loc = turfNearestPointOnLine(profileGeoJSON, ptFeat, { units: 'meters' }).properties.location;
+                        if (typeof loc === 'number' && !isNaN(loc)) {
+                            results.push({
+                                id: `${layer.id}-${feature.getId() || fIdx}-cross-${cIdx}`,
+                                layerId: layer.id,
+                                layerName: layer.name,
+                                featureName: featName,
+                                geomType: 'LineString',
+                                distance: loc * scaleFactor,
+                                color: layerColor,
+                            });
+                        }
+                    });
+                }
+            } else if (gType === 'Point' || gType === 'MultiPoint') {
+                try {
+                    const pt = featGeoJSON as TurfFeature<TurfPoint>;
+                    const distToLine = turfPointToLineDistance(pt, profileGeoJSON, { units: 'meters' });
+                    if (distToLine <= 35) {
+                        const loc = turfNearestPointOnLine(profileGeoJSON, pt, { units: 'meters' }).properties.location;
+                        if (typeof loc === 'number' && !isNaN(loc)) {
+                            results.push({
+                                id: `${layer.id}-${feature.getId() || fIdx}-pt`,
+                                layerId: layer.id,
+                                layerName: layer.name,
+                                featureName: featName,
+                                geomType: 'Point',
+                                distance: loc * scaleFactor,
+                                color: layerColor,
+                            });
+                        }
+                    }
+                } catch {
+                    // ignore point distance calculation errors
+                }
+            }
+        });
+    }
+
+    return results;
 }

@@ -1,16 +1,17 @@
 
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DraggablePanel from './DraggablePanel';
 import LayerList from '@/components/layer-manager/LayerList';
 import FileUploadControl from '@/components/layer-manager/FileUploadControl';
 import FeatureInteractionToolbar from '@/components/feature-inspection/FeatureInteractionToolbar';
 import { Separator } from '@/components/ui/separator';
 import type { MapLayer, GeoServerDiscoveredLayer, LabelOptions, GraduatedSymbology, CategorizedSymbology, GeoTiffStyle, LayerGroup } from '@/lib/types';
-import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group } from 'lucide-react'; 
+import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group, Folder, FolderOpen, Check, Plus, Minus, Layers } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +25,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Label } from '@/components/ui/label';
 import type { StyleOptions } from '../layer-manager/StyleEditorDialog';
 import type { InteractionToolId } from '@/lib/types';
 import type Feature from 'ol/Feature';
@@ -81,6 +81,10 @@ interface LegendPanelProps {
   onAddDeasLayer: (layer: GeoServerDiscoveredLayer) => void;
   isFetchingDeasLayers: boolean;
   onReloadDeasLayers: () => void;
+  onSyncProject?: (projectCode: string) => void;
+  onPassiveCheckProject?: (projectCode: string) => void;
+  syncingProjectCode?: string;
+  initialActiveProject?: string;
   
   // Undo props
   canUndoRemove: boolean;
@@ -131,8 +135,36 @@ const deasOrgNames: { [key: string]: string } = {
   'VASE': 'Vertiente Atlántica SE',
 };
 
-// Type definitions for the hierarchical structure
-type DeasProjectNode = { [projectName: string]: GeoServerDiscoveredLayer[] };
+const projectFormalNames: { [key: string]: string } = {
+  // Proyectos Estandarizados Activos
+  'MAR013': 'Prueba CC',
+  'RSA060': 'Restitución del terraplén de defensa de la localidad de Carhué-Adolfo Alsina',
+  'RSA062': 'Coronel Suárez (nombre a definir)',
+  'RSA063': 'Saneamiento Loteo Chacra 196 - Gral. La Madrid',
+  'RSA069': 'Entubamiento Canal Llambías - Trenque Lauquen',
+
+  // Proyectos Relevados en Drive (Cuencas EIAS Ambientales)
+  'CM004': 'qwwq',
+  'MAR011': 'Prueba Gestión proyectos',
+  'MAR012': 'Prueba Z',
+  'RAR001': 'Adecuación Río Areco',
+  'RAR005': 'Prueba BBB',
+  'RLU007': 'Puentes sobre el rio Lujan - Lote 2',
+  'RLU016': 'Adecuación del río Luján, Etapa 3 - Mercedes',
+  'RPS010': 'Arroyo San Juan',
+  'RRQ006': 'Evaluación del comportamiento hidráulico de la cuenca del Zanjón Madero, diseño de la estación de bombeo y obras complementarias',
+  'RRQ023': 'Desagües Pluviales San Martin, calles Lange y San Andres',
+  'RRQ024': 'Probando',
+  'RRQ025': 'Desagües Pluviales Cuenca Vergara - Hurlingham',
+  'RSA048': 'Puentes sobre Río Salado Ferroviario Salado 4.1b LOTE A - VidelaDorna/Gorch',
+  'RSA065': 'Limpieza del Desvío Arroyo Pigüé',
+  'RSA071': 'Reacondicionamiento Terraplén de Defensa y Estación de Bombeo de Guaminí',
+  'RSA072': 'Puentes sobre Río Salado Ferroviario Salado 4.1b LOTE B - Salvador María-Roque Perez',
+};
+
+// Type definitions for the hierarchical structure (Org -> Project -> Category -> Layers)
+type DeasCategoryNode = { [categoryName: string]: GeoServerDiscoveredLayer[] };
+type DeasProjectNode = { [projectName: string]: DeasCategoryNode };
 type DeasOrgNode = { [orgName: string]: DeasProjectNode };
 
 
@@ -144,6 +176,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   onAddLayer, 
   activeTool, onSetActiveTool, onClearSelection,
   discoveredDeasLayers = [], onAddDeasLayer, isFetchingDeasLayers, onReloadDeasLayers,
+  onSyncProject, onPassiveCheckProject, syncingProjectCode, initialActiveProject,
   canUndoRemove, onUndoRemove,
   selectedFeaturesForSelection,
   isSharedView,
@@ -158,49 +191,130 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   }, [layers]);
 
 
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+
+  // Auto-expandir el proyecto activo si viene seleccionado desde Portal DEA
+  useEffect(() => {
+    if (initialActiveProject && discoveredDeasLayers.length > 0) {
+      const target = initialActiveProject.toUpperCase().trim();
+      const matchingLayers = discoveredDeasLayers.filter(l => (l.projectCode || '').toUpperCase() === target);
+      if (matchingLayers.length > 0) {
+        setExpandedNodes(prev => {
+          const next = { ...prev };
+          matchingLayers.forEach(l => {
+            const orgCode = l.projectCode?.match(/^([a-zA-Z]+)/)?.[1] || 'DEA';
+            const projCode = l.projectCode || '';
+            const cat = l.category || 'shp';
+            next[orgCode] = true;
+            next[`${orgCode}/${projCode}`] = true;
+            next[`${orgCode}/${projCode}/${cat}`] = true;
+          });
+          return next;
+        });
+      }
+    }
+  }, [initialActiveProject, discoveredDeasLayers]);
+
+  const isNodeExpanded = useCallback((pathKey: string) => {
+    // Si hay un término de búsqueda activo, expandir automáticamente para revelar coincidencias
+    if (deasSearchTerm.trim().length > 0) {
+      return expandedNodes[pathKey] !== undefined ? expandedNodes[pathKey] : true;
+    }
+    // De inicio y por defecto: todo colapsado
+    return expandedNodes[pathKey] !== undefined ? expandedNodes[pathKey] : false;
+  }, [expandedNodes, deasSearchTerm]);
+
+  const toggleNodeExpanded = useCallback((pathKey: string) => {
+    setExpandedNodes(prev => {
+      const isSearching = deasSearchTerm.trim().length > 0;
+      const defaultState = isSearching ? true : false;
+      const current = prev[pathKey] !== undefined ? prev[pathKey] : defaultState;
+      return { ...prev, [pathKey]: !current };
+    });
+  }, [deasSearchTerm]);
+
+  const isLayerAdded = useCallback((discoveredLayer: GeoServerDiscoveredLayer) => {
+    const discName = (discoveredLayer.name || '').toLowerCase();
+    const discTitle = (discoveredLayer.title || '').toLowerCase();
+    const discClean = discName.includes(':') ? discName.split(':')[1] : discName;
+
+    return layers.some(l => {
+      if ('layers' in l) {
+        return l.layers.some(subL => {
+          const sName = (subL.layerName || '').toLowerCase();
+          const sTitle = (subL.name || '').toLowerCase();
+          return sName === discName || sName === discClean || sTitle === discTitle || sTitle === discClean;
+        });
+      }
+      const lName = (l.layerName || '').toLowerCase();
+      const lTitle = (l.name || '').toLowerCase();
+      return lName === discName || lName === discClean || lTitle === discTitle || lTitle === discClean;
+    });
+  }, [layers]);
+
   const hierarchicalDeasLayers = useMemo(() => {
-    const lowercasedFilter = deasSearchTerm.toLowerCase();
+    // Normalizador insensible a acentos/diacríticos y mayúsculas
+    const normalizeText = (str: string): string => {
+      return (str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    };
+
+    const searchTokens = normalizeText(deasSearchTerm).split(/\s+/).filter(Boolean);
     
     // Verificación defensiva para discoveredDeasLayers
     const layersToFilter = discoveredDeasLayers || [];
 
     const filteredLayers = layersToFilter.filter(layer => {
-        if (!deasSearchTerm) return true;
+        if (searchTokens.length === 0) return true;
         const [workspace = '', layerNameOnly = ''] = layer.name.split(':');
         const orgFullName = deasOrgNames[workspace.toUpperCase()] || '';
-        return (
-            layer.title.toLowerCase().includes(lowercasedFilter) ||
-            workspace.toLowerCase().includes(lowercasedFilter) ||
-            layerNameOnly.toLowerCase().includes(lowercasedFilter) ||
-            orgFullName.toLowerCase().includes(lowercasedFilter)
-        );
+        const projectFormal = projectFormalNames[(layer.projectCode || '').toUpperCase()] || '';
+
+        const searchableText = [
+          layer.title,
+          layer.name,
+          layerNameOnly,
+          workspace,
+          orgFullName,
+          layer.projectCode || '',
+          projectFormal,
+          layer.category || '',
+        ].map(normalizeText).join(' ');
+
+        // Todos los términos ingresados deben coincidir con algún campo
+        return searchTokens.every(token => searchableText.includes(token));
     });
 
     return filteredLayers.reduce<DeasOrgNode>((orgs, layer) => {
-        const [workspace, layerNameOnly] = layer.name.split(':');
-        if (!layerNameOnly) return orgs;
-        
-        const match = layerNameOnly.match(/^([a-zA-Z]+)(\d{3,})(_.*)?$/);
+        let projectCode = (layer.projectCode || '').toUpperCase();
+        let orgCode = '';
 
-        if (match) {
-            const orgCode = match[1].toUpperCase();
-            const orgFullName = deasOrgNames[orgCode] || orgCode;
-            const projectCode = `${orgCode}${match[2]}`;
-
-            if (!orgs[orgFullName]) orgs[orgFullName] = {};
-            if (!orgs[orgFullName][projectCode]) orgs[orgFullName][projectCode] = [];
-            
-            orgs[orgFullName][projectCode].push(layer);
+        if (!projectCode) {
+            const [workspace, layerNameOnly = ''] = layer.name.split(':');
+            const match = (layerNameOnly || '').match(/^([a-zA-Z]+)(\d{3,})(_.*)?$/);
+            if (match) {
+                orgCode = match[1].toUpperCase();
+                projectCode = `${orgCode}${match[2]}`;
+            } else {
+                orgCode = (workspace || 'OTROS').toUpperCase();
+                projectCode = 'General';
+            }
         } else {
-            const orgCode = workspace.toUpperCase() || 'OTROS';
-            const orgFullName = deasOrgNames[orgCode] || orgCode;
-            const projectCode = 'General';
-
-            if (!orgs[orgFullName]) orgs[orgFullName] = {};
-            if (!orgs[orgFullName][projectCode]) orgs[orgFullName][projectCode] = [];
-            
-            orgs[orgFullName][projectCode].push(layer);
+            const match = projectCode.match(/^([a-zA-Z]+)/);
+            orgCode = match ? match[1].toUpperCase() : 'OTROS';
         }
+
+        const orgFullName = deasOrgNames[orgCode] || (orgCode ? `Cuenca ${orgCode}` : 'Otras Cuencas');
+        const categoryName = (layer.category || 'shp').toUpperCase();
+
+        if (!orgs[orgFullName]) orgs[orgFullName] = {};
+        if (!orgs[orgFullName][projectCode]) orgs[orgFullName][projectCode] = {};
+        if (!orgs[orgFullName][projectCode][categoryName]) orgs[orgFullName][projectCode][categoryName] = [];
+        
+        orgs[orgFullName][projectCode][categoryName].push(layer);
         
         return orgs;
     }, {});
@@ -436,57 +550,221 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                       )}
                   </div>
                   <ScrollArea className="flex-grow min-h-0 border-t border-gray-700/50">
-                  <div className="pr-3">
+                  <div className="pr-2 space-y-1 py-1">
                     {Object.keys(hierarchicalDeasLayers).length > 0 ? (
-                        <Accordion type="multiple" className="w-full">
-                          {Object.entries(hierarchicalDeasLayers).sort(([orgA], [orgB]) => orgA.localeCompare(orgB)).map(([orgName, projects]) => (
-                            <AccordionItem value={orgName} key={orgName} className="border-b border-gray-700/50">
-                              <AccordionTrigger className="p-2 text-xs font-semibold text-white/90 hover:no-underline hover:bg-gray-700/30 rounded-t-md">
-                                {orgName} ({Object.values(projects).reduce((acc, p) => acc + p.length, 0)})
-                              </AccordionTrigger>
-                              <AccordionContent className="p-1 pl-2 bg-black/20">
-                                  <Accordion type="multiple" className="w-full">
-                                      {Object.entries(projects).sort(([projA], [projB]) => projA.localeCompare(projB)).map(([projectName, projectLayers]) => (
-                                          <AccordionItem value={projectName} key={projectName} className="border-b-0">
-                                              <AccordionTrigger className="p-1.5 text-xs font-medium text-white/70 hover:no-underline hover:bg-white/5 rounded-md">
-                                                  {projectName} ({projectLayers.length})
-                                              </AccordionTrigger>
-                                              <AccordionContent className="p-1 pl-4">
-                                                  <div className="space-y-1">
-                                                    {projectLayers.sort((a,b) => a.title.localeCompare(b.title)).map(layer => (
-                                                      <div key={layer.name} className="flex items-center space-x-2 p-1 rounded-md hover:bg-white/5">
-                                                          <Button 
-                                                            variant="outline" 
-                                                            size="icon" 
-                                                            className="h-6 w-6 p-0"
-                                                            onClick={() => onAddDeasLayer(layer)}
-                                                            disabled={layer.wfsAddedToMap}
-                                                            >
-                                                            <Database className="h-3.5 w-3.5" />
-                                                          </Button>
-                                                          <Label
-                                                            className="text-xs font-medium text-white/80 cursor-pointer flex-1 capitalize"
-                                                            title={layer.name}
+                      Object.entries(hierarchicalDeasLayers).sort(([orgA], [orgB]) => orgA.localeCompare(orgB)).map(([orgName, projects]) => {
+                        const totalOrgLayers = Object.values(projects).reduce(
+                          (sum, cats) => sum + Object.values(cats).reduce((cSum, lList) => cSum + lList.length, 0),
+                          0
+                        );
+                        const isOrgOpen = isNodeExpanded(orgName);
+
+                        return (
+                          <div key={orgName} className="select-none">
+                            {/* Nivel 1: Cuenca */}
+                            <div 
+                              className="flex items-center gap-1.5 p-1.5 rounded hover:bg-white/5 cursor-pointer text-white/90 group"
+                              onClick={() => toggleNodeExpanded(orgName)}
+                            >
+                              <button
+                                type="button"
+                                className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[3px] border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleNodeExpanded(orgName);
+                                }}
+                                title={isOrgOpen ? "Colapsar cuenca" : "Expandir cuenca"}
+                              >
+                                {isOrgOpen ? <Minus className="h-2.5 w-2.5 stroke-[2.5]" /> : <Plus className="h-2.5 w-2.5 stroke-[2.5]" />}
+                              </button>
+                              <span className="text-xs font-semibold truncate group-hover:text-white">
+                                {orgName} ({totalOrgLayers})
+                              </span>
+                            </div>
+
+                            {/* Nivel 2: Proyectos */}
+                            {isOrgOpen && (
+                              <div className="ml-3 pl-2.5 border-l border-slate-700/60 space-y-1 mt-0.5">
+                                {Object.entries(projects).sort(([projA], [projB]) => projA.localeCompare(projB)).map(([projectName, categories]) => {
+                                  const totalProjLayers = Object.values(categories).reduce(
+                                    (sum, lList) => sum + lList.length,
+                                    0
+                                  );
+                                  const projKey = `${orgName}/${projectName}`;
+                                  const isProjOpen = isNodeExpanded(projKey);
+                                  const formalName = projectFormalNames[projectName.toUpperCase()] || projectName;
+
+                                  return (
+                                    <div key={projectName}>
+                                      <div 
+                                        className="flex items-center gap-1.5 py-1 px-1 rounded hover:bg-white/5 cursor-pointer text-slate-200 group"
+                                        onClick={() => {
+                                          const willOpen = !isProjOpen;
+                                          toggleNodeExpanded(projKey);
+                                          if (willOpen && onPassiveCheckProject) {
+                                            onPassiveCheckProject(projectName);
+                                          }
+                                        }}
+                                      >
+                                        <button
+                                          type="button"
+                                          className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[3px] border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const willOpen = !isProjOpen;
+                                            toggleNodeExpanded(projKey);
+                                            if (willOpen && onPassiveCheckProject) {
+                                              onPassiveCheckProject(projectName);
+                                            }
+                                          }}
+                                          title={isProjOpen ? "Colapsar proyecto" : "Expandir proyecto"}
+                                        >
+                                          {isProjOpen ? <Minus className="h-2.5 w-2.5 stroke-[2.5]" /> : <Plus className="h-2.5 w-2.5 stroke-[2.5]" />}
+                                        </button>
+                                        <TooltipProvider delayDuration={150}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span 
+                                                className="text-xs font-medium truncate group-hover:text-white underline decoration-dotted decoration-slate-500/60 underline-offset-2"
+                                              >
+                                                {projectName} ({totalProjLayers})
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent 
+                                              side="right" 
+                                              align="center" 
+                                              className="bg-slate-900/95 backdrop-blur border border-slate-700 text-white max-w-xs shadow-xl p-2 z-[9999]"
+                                            >
+                                              <p className="text-[11px] font-semibold text-sky-400">{projectName}</p>
+                                              <p className="text-xs text-slate-200 mt-0.5 leading-snug">{formalName}</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+
+                                        {/* Botón manual de sincronización por proyecto */}
+                                        {onSyncProject && (
+                                          <button
+                                            type="button"
+                                            className={cn(
+                                              "h-4 w-4 shrink-0 flex items-center justify-center rounded p-0 text-white/30 hover:text-sky-300 hover:bg-white/10 transition-colors ml-auto mr-1",
+                                              syncingProjectCode === projectName && "text-sky-400"
+                                            )}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onSyncProject(projectName);
+                                            }}
+                                            title={`Sincronizar ${projectName} con Drive ahora`}
+                                          >
+                                            <RefreshCw
+                                              className={cn(
+                                                "h-2.5 w-2.5",
+                                                syncingProjectCode === projectName && "animate-spin text-sky-400"
+                                              )}
+                                            />
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      {/* Nivel 3: Subcarpetas de GIS (justificadas a la izquierda) */}
+                                      {isProjOpen && (
+                                        <div className="ml-3 pl-2.5 border-l border-slate-700/60 space-y-1 mt-0.5">
+                                          {Object.entries(categories).sort(([catA], [catB]) => catA.localeCompare(catB)).map(([categoryName, projectLayers]) => {
+                                            const catKey = `${orgName}/${projectName}/${categoryName}`;
+                                            const isCatOpen = isNodeExpanded(catKey);
+
+                                            return (
+                                              <div key={categoryName}>
+                                                <div 
+                                                  className="flex items-center gap-1.5 py-1 px-1 rounded hover:bg-white/5 cursor-pointer text-amber-300/90 group"
+                                                  onClick={() => toggleNodeExpanded(catKey)}
+                                                >
+                                                  <button
+                                                    type="button"
+                                                    className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[3px] border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      toggleNodeExpanded(catKey);
+                                                    }}
+                                                    title={isCatOpen ? "Colapsar carpeta" : "Expandir carpeta"}
+                                                  >
+                                                    {isCatOpen ? <Minus className="h-2.5 w-2.5 stroke-[2.5]" /> : <Plus className="h-2.5 w-2.5 stroke-[2.5]" />}
+                                                  </button>
+                                                  {isCatOpen ? (
+                                                    <FolderOpen className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                                  ) : (
+                                                    <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                                  )}
+                                                  <span className="text-[11px] font-medium truncate group-hover:text-amber-200">
+                                                    {categoryName.toUpperCase()} ({projectLayers.length})
+                                                  </span>
+                                                </div>
+
+                                                {/* Nivel 4: Capas individuales dentro de la subcarpeta */}
+                                                {isCatOpen && (
+                                                  <div className="ml-3 pl-2.5 border-l border-slate-700/40 space-y-1 mt-0.5">
+                                                    {projectLayers.sort((a,b) => a.title.localeCompare(b.title)).map(layer => {
+                                                      const added = isLayerAdded(layer);
+                                                      return (
+                                                        <div 
+                                                          key={layer.name} 
+                                                          className="flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer"
+                                                          onClick={() => {
+                                                            if (!added) onAddDeasLayer(layer);
+                                                          }}
+                                                          title={added ? "Capa agregada (quitar desde la lista de capas)" : "Cargar capa en el mapa"}
+                                                        >
+                                                          <button 
+                                                            type="button" 
+                                                            className={cn(
+                                                              "p-0.5 rounded transition-colors flex-shrink-0 flex items-center justify-center bg-transparent border-0",
+                                                              added
+                                                                ? "text-emerald-400 cursor-default"
+                                                                : "text-sky-400 group-hover:text-sky-300"
+                                                            )}
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              if (!added) onAddDeasLayer(layer);
+                                                            }}
+                                                            disabled={added}
                                                           >
-                                                            {layer.title.toLowerCase()}
-                                                          </Label>
-                                                      </div>
-                                                    ))}
+                                                            {added ? (
+                                                              <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                                            ) : (
+                                                              <Layers className="h-3.5 w-3.5" />
+                                                            )}
+                                                          </button>
+                                                          <span
+                                                            className={cn(
+                                                              "text-xs font-normal flex-1 truncate transition-colors",
+                                                              added ? "text-emerald-300 font-medium" : "text-white/80 group-hover:text-white"
+                                                            )}
+                                                          >
+                                                            {layer.title}
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    })}
                                                   </div>
-                                              </AccordionContent>
-                                          </AccordionItem>
-                                      ))}
-                                  </Accordion>
-                              </AccordionContent>
-                            </AccordionItem>
-                          ))}
-                        </Accordion>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
                     ) : (
-                        <p className="p-4 text-center text-xs text-gray-400">
-                          {isFetchingDeasLayers ? "Cargando capas..." : "No se encontraron resultados."}
-                        </p>
+                      <p className="p-4 text-center text-xs text-gray-400">
+                        {isFetchingDeasLayers ? "Cargando capas..." : "No se encontraron resultados."}
+                      </p>
                     )}
-                    </div>
+                  </div>
                   </ScrollArea>
               </div>
             )}

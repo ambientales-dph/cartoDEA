@@ -26,13 +26,9 @@ export function FirebaseClientProvider({
     return { firebaseApp: app, auth: authInstance, firestore: firestoreInstance };
   }, []);
 
-  // Use useEffect to run client-side only logic, like connecting to emulators.
+  // Conectar a emuladores solo si está explícitamente configurado por variable de entorno
   useEffect(() => {
-    // This code will only run in the browser.
-    if (
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1'
-    ) {
+    if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true') {
       // Ensure we don't connect more than once
       if (!(auth as any)._isEmulator) {
         connectAuthEmulator(auth, 'http://127.0.0.1:9099', {
