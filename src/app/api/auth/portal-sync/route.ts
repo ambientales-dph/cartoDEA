@@ -11,13 +11,16 @@ export async function POST(request: NextRequest) {
     let firebase_token: string | null = null;
     const contentType = request.headers.get('content-type') || '';
 
-    // 1. Extraer el token del cuerpo del POST según el tipo de contenido
+    // 1. Extraer el token y código de proyecto del cuerpo del POST
+    let project_code: string | null = null;
     if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       firebase_token = formData.get('firebase_token') as string;
+      project_code = (formData.get('project_code') as string) || null;
     } else {
       const body = await request.json();
       firebase_token = body.firebase_token;
+      project_code = body.project_code || null;
     }
 
     if (!firebase_token) {
@@ -46,8 +49,12 @@ export async function POST(request: NextRequest) {
 
     // 5. Preparar respuesta con redirección y cookie temporal de intercambio
     // Usamos la variable de entorno NEXT_PUBLIC_BASE_URL de forma absoluta para evitar desvíos
-    const redirectUrl = process.env.NEXT_PUBLIC_BASE_URL || new URL('/', request.url).toString();
-    const response = NextResponse.redirect(redirectUrl);
+    const baseRedirect = process.env.NEXT_PUBLIC_BASE_URL || new URL('/', request.url).toString();
+    const redirectUrlObj = new URL(baseRedirect);
+    if (project_code) {
+      redirectUrlObj.searchParams.set('project', project_code.toUpperCase().trim());
+    }
+    const response = NextResponse.redirect(redirectUrlObj.toString());
     
     // Cookie de token (muy corta duración)
     response.cookies.set('portal_auth_token', customToken, {
@@ -57,6 +64,15 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       maxAge: 60,
     });
+
+    // Almacenamos el proyecto activo en cookie temporal
+    if (project_code) {
+      response.cookies.set('portal_active_project', project_code.toUpperCase().trim(), {
+        path: '/',
+        maxAge: 3600,
+        sameSite: 'lax',
+      });
+    }
 
     // Almacenamos los datos de perfil para que el frontend actualice el objeto User de Firebase
     if (picture) {

@@ -84,6 +84,7 @@ interface LegendPanelProps {
   onSyncProject?: (projectCode: string) => void;
   onPassiveCheckProject?: (projectCode: string) => void;
   syncingProjectCode?: string;
+  initialActiveProject?: string;
   
   // Undo props
   canUndoRemove: boolean;
@@ -175,7 +176,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   onAddLayer, 
   activeTool, onSetActiveTool, onClearSelection,
   discoveredDeasLayers = [], onAddDeasLayer, isFetchingDeasLayers, onReloadDeasLayers,
-  onSyncProject, onPassiveCheckProject, syncingProjectCode,
+  onSyncProject, onPassiveCheckProject, syncingProjectCode, initialActiveProject,
   canUndoRemove, onUndoRemove,
   selectedFeaturesForSelection,
   isSharedView,
@@ -191,6 +192,28 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
 
 
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+
+  // Auto-expandir el proyecto activo si viene seleccionado desde Portal DEA
+  useEffect(() => {
+    if (initialActiveProject && discoveredDeasLayers.length > 0) {
+      const target = initialActiveProject.toUpperCase().trim();
+      const matchingLayers = discoveredDeasLayers.filter(l => (l.projectCode || '').toUpperCase() === target);
+      if (matchingLayers.length > 0) {
+        setExpandedNodes(prev => {
+          const next = { ...prev };
+          matchingLayers.forEach(l => {
+            const orgCode = l.projectCode?.match(/^([a-zA-Z]+)/)?.[1] || 'DEA';
+            const projCode = l.projectCode || '';
+            const cat = l.category || 'shp';
+            next[orgCode] = true;
+            next[`${orgCode}/${projCode}`] = true;
+            next[`${orgCode}/${projCode}/${cat}`] = true;
+          });
+          return next;
+        });
+      }
+    }
+  }, [initialActiveProject, discoveredDeasLayers]);
 
   const isNodeExpanded = useCallback((pathKey: string) => {
     // Si hay un término de búsqueda activo, expandir automáticamente para revelar coincidencias

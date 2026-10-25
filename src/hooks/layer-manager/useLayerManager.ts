@@ -545,7 +545,10 @@ export const useLayerManager = ({
       return null;
   }, [addLayer]);
 
-  const handleAddGisVectorLayer = useCallback(async (layer: GeoServerDiscoveredLayer) => {
+  const handleAddGisVectorLayer = useCallback(async (
+    layer: GeoServerDiscoveredLayer,
+    options?: { skipFit?: boolean; skipToast?: boolean }
+  ) => {
       const layerId = `gis-${nanoid(8)}`;
       const portalBase = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
         ? 'http://localhost:9003'
@@ -623,7 +626,7 @@ export const useLayerManager = ({
 
         addLayer(newMapLayer);
 
-        if (mapRef.current) {
+        if (!options?.skipFit && mapRef.current) {
           const extent = vectorSource.getExtent();
           if (extent && extent.every(n => Number.isFinite(n))) {
             mapRef.current.getView().fit(extent, { duration: 900, padding: [60, 60, 60, 60] });
@@ -633,22 +636,80 @@ export const useLayerManager = ({
           }
         }
 
-        toast({
-          title: 'Capa DEA Agregada',
-          description: `Se cargó "${layer.title}" (${features.length} entidades).`,
-        });
+        if (!options?.skipToast) {
+          toast({
+            title: 'Capa DEA Agregada',
+            description: `Se cargó "${layer.title}" (${features.length} entidades).`,
+          });
+        }
 
         return olLayer;
       } catch (err: any) {
         console.error('[CartoDEA] Error al cargar entidades de la capa:', err);
-        toast({
-          title: 'Error al cargar capa',
-          description: `No se pudieron cargar las entidades de "${layer.title}": ${err.message}`,
-          variant: 'destructive',
-        });
+        if (!options?.skipToast) {
+          toast({
+            title: 'Error al cargar capa',
+            description: `No se pudieron cargar las entidades de "${layer.title}": ${err.message}`,
+            variant: 'destructive',
+          });
+        }
         return null;
       }
-  }, [addLayer, createLayerStyle, mapRef, toast]);
+  }, [addLayer, mapRef, toast]);
+
+  const handleLoadProjectLayers = useCallback(async (
+    projectCode: string,
+    allDiscoveredLayers: GeoServerDiscoveredLayer[]
+  ) => {
+    const targetCode = projectCode.toUpperCase().trim();
+    const projectLayers = allDiscoveredLayers.filter(
+      l => (l.projectCode || '').toUpperCase() === targetCode
+    );
+
+    if (projectLayers.length === 0) {
+      console.log(`[CartoDEA] No se encontraron capas estandarizadas para el proyecto "${targetCode}". Se conserva el encuadre inicial.`);
+      return;
+    }
+
+    console.log(`[CartoDEA] Cargando automáticamente ${projectLayers.length} capas del proyecto activo "${targetCode}"...`);
+
+    const loadedExtents: number[][] = [];
+
+    const results = await Promise.allSettled(
+      projectLayers.map(l => handleAddGisVectorLayer(l, { skipFit: true, skipToast: true }))
+    );
+
+    results.forEach((res, idx) => {
+      if (res.status === 'fulfilled' && res.value) {
+        const olLayer = res.value;
+        const source = olLayer.getSource();
+        const extent = source?.getExtent();
+        if (extent && extent.every(n => Number.isFinite(n))) {
+          loadedExtents.push(extent);
+        } else if (projectLayers[idx].bbox) {
+          const extent3857 = transformExtent(projectLayers[idx].bbox!, 'EPSG:4326', 'EPSG:3857');
+          if (extent3857.every(n => Number.isFinite(n))) {
+            loadedExtents.push(extent3857);
+          }
+        }
+      }
+    });
+
+    if (loadedExtents.length > 0 && mapRef.current) {
+      const combinedExtent = [
+        Math.min(...loadedExtents.map(e => e[0])),
+        Math.min(...loadedExtents.map(e => e[1])),
+        Math.max(...loadedExtents.map(e => e[2])),
+        Math.max(...loadedExtents.map(e => e[3])),
+      ];
+      mapRef.current.getView().fit(combinedExtent, { duration: 1200, padding: [80, 80, 80, 80] });
+    }
+
+    toast({
+      title: `Proyecto ${targetCode}`,
+      description: `Se cargaron ${loadedExtents.length} capas cartográficas del proyecto activo.`,
+    });
+  }, [handleAddGisVectorLayer, mapRef, toast]);
 
   // Clean up intervals on unmount
   useEffect(() => {
@@ -739,6 +800,7 @@ export const useLayerManager = ({
     onToggleWmsStyle: (id: string) => {},
     handleAddHybridLayer,
     handleAddGisVectorLayer,
+    handleLoadProjectLayers,
     addGeeLayerToMap,
     reorderLayers,
     groupLayers,

@@ -420,6 +420,45 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   }, [isMapReady, handleSetActiveTool, mapElementRef]);
 
   const [discoveredGeoServerLayers, setDiscoveredGeoServerLayers] = useState<GeoServerDiscoveredLayer[]>([]);
+  const [activePortalProject, setActivePortalProject] = useState<string | null>(null);
+  const hasAutoLoadedProjectRef = useRef(false);
+
+  // Detección de proyecto activo transferido desde Portal DEA (vía URL o cookie)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParam = new URLSearchParams(window.location.search).get('project');
+      let cookieVal: string | null = null;
+      const match = document.cookie.match(/(?:^|;\s*)portal_active_project=([^;]+)/);
+      if (match) cookieVal = decodeURIComponent(match[1]);
+
+      const pCode = (urlParam || cookieVal || '').trim().toUpperCase();
+      if (pCode) {
+        console.log(`[CartoDEA] Proyecto activo detectado desde Portal DEA: ${pCode}`);
+        setActivePortalProject(pCode);
+        document.cookie = 'portal_active_project=; path=/; max-age=0;';
+      }
+    }
+  }, []);
+
+  // Carga automática de capas del proyecto activo al iniciar si existen capas estandarizadas
+  useEffect(() => {
+    if (!isMapReady || !activePortalProject || discoveredGeoServerLayers.length === 0 || hasAutoLoadedProjectRef.current) {
+      return;
+    }
+
+    hasAutoLoadedProjectRef.current = true;
+    const matchingLayers = discoveredGeoServerLayers.filter(
+      l => (l.projectCode || '').toUpperCase() === activePortalProject
+    );
+
+    if (matchingLayers.length > 0) {
+      console.log(`[CartoDEA] Cargando automáticamente ${matchingLayers.length} capas del proyecto "${activePortalProject}"...`);
+      layerManagerHook.handleLoadProjectLayers(activePortalProject, discoveredGeoServerLayers);
+    } else {
+      console.log(`[CartoDEA] El proyecto "${activePortalProject}" no cuenta con carpeta GIS estandarizada. Se conserva el encuadre inicial.`);
+    }
+  }, [isMapReady, activePortalProject, discoveredGeoServerLayers, layerManagerHook]);
+
   const [printLayoutImage, setPrintLayoutImage] = useState<string | null>(null);
   const [isGeeAuthenticated, setIsGeeAuthenticated] = useState(false);
   const [isGeeAuthenticating, setIsGeeAuthenticating] = useState(true);
@@ -855,6 +894,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onSyncProject={(pCode) => handleStreamSync(pCode)}
             onPassiveCheckProject={(pCode) => handlePassiveProjectCheck(pCode)}
             syncingProjectCode={syncProgress.active ? syncProgress.projectCode : undefined}
+            initialActiveProject={activePortalProject || undefined}
             canUndoRemove={layerManagerHook.lastRemovedLayers.length > 0}
             onUndoRemove={layerManagerHook.undoRemove}
             selectedFeaturesForSelection={featureInspectionHook.selectedFeatures}
