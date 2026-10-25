@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Map } from 'ol';
 import TileLayer from 'ol/layer/Tile';
 import TileWMS from 'ol/source/TileWMS';
@@ -9,7 +9,7 @@ import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
 import GeoJSON from 'ol/format/GeoJSON';
 import { useToast } from "@/hooks/use-toast";
-import type { MapLayer, GeoServerDiscoveredLayer } from '@/lib/types';
+import type { MapLayer, GeoServerDiscoveredLayer, SyncProgressState } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { Style, Fill, Stroke } from 'ol/style';
 import { bbox as bboxStrategy } from 'ol/loadingstrategy';
@@ -33,6 +33,19 @@ export const useGeoServerLayers = ({
 }: UseGeoServerLayersProps) => {
   const { toast } = useToast();
   const [isFetching, setIsFetching] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgressState>({
+    active: false,
+    projectCode: '',
+    current: 0,
+    total: 0,
+    layerName: '',
+    percent: 0,
+    status: 'idle',
+  });
+
+  // Cooldown de 15 minutos en memoria por proyecto para evitar saturación de red
+  const lastCheckedProjectsRef = useRef<Record<string, number>>({});
+  const CHECK_COOLDOWN_MS = 15 * 60 * 1000;
   
   const handleFetchGeoServerLayers = useCallback(async (
     urlOverride?: string,
@@ -146,32 +159,147 @@ export const useGeoServerLayers = ({
     }
   }, [toast]);
 
-  const handleSyncDeasLayers = useCallback(async (projectCode: string = 'RSA063'): Promise<GeoServerDiscoveredLayer[] | null> => {
-    setIsFetching(true);
+  const dismissSyncProgress = useCallback(() => {
+    setSyncProgress(prev => ({ ...prev, active: false }));
+  }, []);
+
+  /**
+   * Sincroniza un proyecto contra Google Drive recibiendo el progreso en tiempo real
+   * mediante Server-Sent Events (SSE).
+   */
+  const handleStreamSync = useCallback(async (projectCode: string): Promise<GeoServerDiscoveredLayer[] | null> => {
     const portalBase = getPortalBaseUrl();
+    setSyncProgress({
+      active: true,
+      projectCode,
+      current: 0,
+      total: 0,
+      layerName: 'Iniciando conexión...',
+      percent: 0,
+      status: 'starting',
+      message: `Conectando con Google Drive para ${projectCode}...`,
+    });
+
     try {
-      toast({
-        title: 'Sincronizando con Drive...',
-        description: `Procesando capas para ${projectCode}`,
-      });
-      const syncUrl = `${portalBase}/api/gis/sync?projectCode=${encodeURIComponent(projectCode)}`;
-      await fetch(syncUrl, { method: 'POST' });
-      return await handleFetchGeoServerLayers(undefined, projectCode);
+      const syncUrl = `${portalBase}/api/gis/sync-stream?projectCode=${encodeURIComponent(projectCode)}`;
+      const res = await fetch(syncUrl);
+
+      if (!res.ok) {
+        throw new Error(`Error en servidor: ${res.statusText}`);
+      }
+
+      if (!res.body) {
+        throw new Error('No se pudo abrir el stream de sincronización');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            try {
+              const payload = JSON.parse(trimmed.replace(/^data:\s*/, ''));
+              setSyncProgress(prev => ({
+                ...prev,
+                active: true,
+                projectCode,
+                current: payload.current || prev.current,
+                total: payload.total || prev.total,
+                layerName: payload.layerName || prev.layerName,
+                percent: payload.percent !== undefined ? payload.percent : prev.percent,
+                status: payload.status || 'syncing',
+                message: payload.message || prev.message,
+              }));
+            } catch (jsonErr) {
+              console.warn('[Sync Stream] Error parseando chunk SSE:', jsonErr);
+            }
+          }
+        }
+      }
+
+      // Marcar cooldown para este proyecto
+      lastCheckedProjectsRef.current[projectCode] = Date.now();
+
+      // Recargar catálogo general de capas para reflejar las nuevas
+      const updatedLayers = await handleFetchGeoServerLayers(undefined, 'ALL');
+
+      // Desvanecer el HUD a los 3.5 segundos tras completarse
+      setTimeout(() => {
+        setSyncProgress(prev => (prev.projectCode === projectCode ? { ...prev, active: false } : prev));
+      }, 3500);
+
+      return updatedLayers;
     } catch (err: any) {
-      toast({
-        title: 'Error de Sincronización',
-        description: err.message,
-        variant: 'destructive',
-      });
+      console.error(`[GIS Stream Sync] Error sincronizando ${projectCode}:`, err);
+      setSyncProgress(prev => ({
+        ...prev,
+        status: 'error',
+        message: err.message || 'Error durante la sincronización',
+      }));
+      setTimeout(() => {
+        setSyncProgress(prev => (prev.projectCode === projectCode ? { ...prev, active: false } : prev));
+      }, 4000);
       return null;
-    } finally {
-      setIsFetching(false);
     }
-  }, [handleFetchGeoServerLayers, toast]);
+  }, [handleFetchGeoServerLayers]);
+
+  /**
+   * Verificación pasiva al expandir un proyecto:
+   * Respeta el cooldown de 15 minutos. Si hay cambios en Drive, dispara handleStreamSync automáticamente.
+   */
+  const handlePassiveProjectCheck = useCallback(async (projectCode: string) => {
+    const pCode = (projectCode || '').toUpperCase();
+    if (!pCode || pCode === 'GENERAL' || pCode === 'ALL') return;
+
+    const now = Date.now();
+    const lastCheck = lastCheckedProjectsRef.current[pCode] || 0;
+
+    // Si ya fue chequeado en los últimos 15 minutos, ignorar completamente
+    if (now - lastCheck < CHECK_COOLDOWN_MS) {
+      return;
+    }
+
+    // Registrar chequeo
+    lastCheckedProjectsRef.current[pCode] = now;
+    const portalBase = getPortalBaseUrl();
+
+    try {
+      const checkUrl = `${portalBase}/api/gis/check-update?projectCode=${encodeURIComponent(pCode)}`;
+      const res = await fetch(checkUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.hasUpdates) {
+          console.log(`[Passive Sync] Se detectaron modificaciones en Drive para ${pCode}. Sincronizando en segundo plano...`);
+          // Disparar sincronización con progreso visible en el HUD
+          await handleStreamSync(pCode);
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Passive Sync] No se pudo comprobar actualizaciones para ${pCode}:`, err.message);
+    }
+  }, [handleStreamSync]);
+
+  const handleSyncDeasLayers = useCallback(async (projectCode: string = 'RSA063'): Promise<GeoServerDiscoveredLayer[] | null> => {
+    return await handleStreamSync(projectCode);
+  }, [handleStreamSync]);
 
   return {
     handleFetchGeoServerLayers,
     handleSyncDeasLayers,
+    handleStreamSync,
+    handlePassiveProjectCheck,
+    syncProgress,
+    dismissSyncProgress,
     isFetching,
   };
 };

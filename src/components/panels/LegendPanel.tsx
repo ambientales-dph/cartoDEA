@@ -81,6 +81,9 @@ interface LegendPanelProps {
   onAddDeasLayer: (layer: GeoServerDiscoveredLayer) => void;
   isFetchingDeasLayers: boolean;
   onReloadDeasLayers: () => void;
+  onSyncProject?: (projectCode: string) => void;
+  onPassiveCheckProject?: (projectCode: string) => void;
+  syncingProjectCode?: string;
   
   // Undo props
   canUndoRemove: boolean;
@@ -172,6 +175,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   onAddLayer, 
   activeTool, onSetActiveTool, onClearSelection,
   discoveredDeasLayers = [], onAddDeasLayer, isFetchingDeasLayers, onReloadDeasLayers,
+  onSyncProject, onPassiveCheckProject, syncingProjectCode,
   canUndoRemove, onUndoRemove,
   selectedFeaturesForSelection,
   isSharedView,
@@ -571,14 +575,24 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                     <div key={projectName}>
                                       <div 
                                         className="flex items-center gap-1.5 py-1 px-1 rounded hover:bg-white/5 cursor-pointer text-slate-200 group"
-                                        onClick={() => toggleNodeExpanded(projKey)}
+                                        onClick={() => {
+                                          const willOpen = !isProjOpen;
+                                          toggleNodeExpanded(projKey);
+                                          if (willOpen && onPassiveCheckProject) {
+                                            onPassiveCheckProject(projectName);
+                                          }
+                                        }}
                                       >
                                         <button
                                           type="button"
                                           className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[3px] border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            const willOpen = !isProjOpen;
                                             toggleNodeExpanded(projKey);
+                                            if (willOpen && onPassiveCheckProject) {
+                                              onPassiveCheckProject(projectName);
+                                            }
                                           }}
                                           title={isProjOpen ? "Colapsar proyecto" : "Expandir proyecto"}
                                         >
@@ -603,6 +617,29 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                             </TooltipContent>
                                           </Tooltip>
                                         </TooltipProvider>
+
+                                        {/* Botón manual de sincronización por proyecto */}
+                                        {onSyncProject && (
+                                          <button
+                                            type="button"
+                                            className={cn(
+                                              "h-4 w-4 shrink-0 flex items-center justify-center rounded p-0 text-white/30 hover:text-sky-300 hover:bg-white/10 transition-colors ml-auto mr-1",
+                                              syncingProjectCode === projectName && "text-sky-400"
+                                            )}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onSyncProject(projectName);
+                                            }}
+                                            title={`Sincronizar ${projectName} con Drive ahora`}
+                                          >
+                                            <RefreshCw
+                                              className={cn(
+                                                "h-2.5 w-2.5",
+                                                syncingProjectCode === projectName && "animate-spin text-sky-400"
+                                              )}
+                                            />
+                                          </button>
+                                        )}
                                       </div>
 
                                       {/* Nivel 3: Subcarpetas de GIS (justificadas a la izquierda) */}

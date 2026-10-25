@@ -240,3 +240,15 @@ export interface MapState {
     baseLayerId: string;
     baseLayerSettings?: BaseLayerSettings; // New: capture base layer effects
 }
+
+export interface SyncProgressState {
+    active: boolean;
+    projectCode: string;
+    current: number;
+    total: number;
+    layerName: string;
+    percent: number;
+    status: 'idle' | 'starting' | 'syncing' | 'completed' | 'error';
+    message?: string;
+}
+

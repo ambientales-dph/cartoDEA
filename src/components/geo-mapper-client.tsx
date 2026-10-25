@@ -99,6 +99,7 @@ import { useOsmQuery } from '@/hooks/osm-integration/useOsmQuery';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { saveUserMap, getUserMaps, saveMapState } from '@/services/sharing-service';
+import { SyncProgressHUD } from '@/components/sync-hud/SyncProgressHUD';
 
 import { useFirestore } from '@/firebase/provider';
 import { useUser } from '@/firebase/auth/use-user';
@@ -529,18 +530,24 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     }
   }, [mapRef, drawingSourceRef, layerManagerHook, toast]);
 
-  const { handleFetchGeoServerLayers, handleSyncDeasLayers, isFetching: isFetchingDeasLayers } =
-    useGeoServerLayers({
-      onLayerStateUpdate: (name, added, type) => {
-          setDiscoveredGeoServerLayers(prev => prev.map(l => {
-              if (l.name === name) {
-                  if (type === 'wms') return { ...l, wmsAddedToMap: added };
-                  return { ...l, wfsAddedToMap: added };
-              }
-              return l;
-          }));
-      },
-    });
+  const {
+    handleFetchGeoServerLayers,
+    handleStreamSync,
+    handlePassiveProjectCheck,
+    syncProgress,
+    dismissSyncProgress,
+    isFetching: isFetchingDeasLayers,
+  } = useGeoServerLayers({
+    onLayerStateUpdate: (name, added, type) => {
+        setDiscoveredGeoServerLayers(prev => prev.map(l => {
+            if (l.name === name) {
+                if (type === 'wms') return { ...l, wmsAddedToMap: added };
+                return { ...l, wfsAddedToMap: added };
+            }
+            return l;
+        }));
+    },
+  });
 
   const wfsLibraryPanelProps = useWfsLibrary({
     onAddLayer: (name, title, url, bbox, style) => layerManagerHook.handleAddHybridLayer(name, title, url, bbox, style),
@@ -845,6 +852,9 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             }}
             isFetchingDeasLayers={isFetchingDeasLayers}
             onReloadDeasLayers={() => handleFetchGeoServerLayers(undefined, 'ALL')}
+            onSyncProject={(pCode) => handleStreamSync(pCode)}
+            onPassiveCheckProject={(pCode) => handlePassiveProjectCheck(pCode)}
+            syncingProjectCode={syncProgress.active ? syncProgress.projectCode : undefined}
             canUndoRemove={layerManagerHook.lastRemovedLayers.length > 0}
             onUndoRemove={layerManagerHook.undoRemove}
             selectedFeaturesForSelection={featureInspectionHook.selectedFeatures}
@@ -1059,6 +1069,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
         </AlertDialogContent>
       </AlertDialog>
 
+      <SyncProgressHUD progress={syncProgress} onDismiss={dismissSyncProgress} />
     </div>
   );
 }
