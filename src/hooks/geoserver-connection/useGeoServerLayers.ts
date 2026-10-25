@@ -148,9 +148,12 @@ export const useGeoServerLayers = ({
         }
       }
 
+      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       toast({
         title: 'Aviso de Capas DEA',
-        description: `Portal DEA no respondió en ${portalBase}. Asegúrese de que portal_dea esté corriendo en el puerto 9003.`,
+        description: isLocal
+          ? `Portal DEA no respondió en ${portalBase}. Asegúrese de que portal_dea esté corriendo en el puerto 9003.`
+          : `Portal DEA no respondió en ${portalBase}. Por favor, intente nuevamente en unos instantes.`,
         variant: 'destructive',
       });
       return null;
