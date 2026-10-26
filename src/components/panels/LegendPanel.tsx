@@ -142,6 +142,8 @@ const projectFormalNames: { [key: string]: string } = {
   'RSA062': 'Coronel Suárez (nombre a definir)',
   'RSA063': 'Saneamiento Loteo Chacra 196 - Gral. La Madrid',
   'RSA069': 'Entubamiento Canal Llambías - Trenque Lauquen',
+  'RSA041': 'Desagües pluviales Mechita (Alberti)',
+  'RSA013': 'General Villegas (descarga Laguna del Parque)',
 
   // Proyectos Relevados en Drive (Cuencas EIAS Ambientales)
   'CM004': 'qwwq',
