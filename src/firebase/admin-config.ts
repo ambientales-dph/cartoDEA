@@ -1,6 +1,7 @@
 // src/firebase/admin-config.ts
 import * as admin from 'firebase-admin';
 import * as fs from 'fs';
+import { PORTAL_SERVICE_ACCOUNT } from './portal-credentials';
 
 const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
@@ -42,21 +43,27 @@ export const initPortalAdminApp = () => {
   if (portalApp) return portalApp;
 
   const portalKeyPath = process.env.PORTAL_DEA_SERVICE_ACCOUNT_KEY || process.env.PORTAL_DEA_SERVICE_ACCOUNT_PATH;
-  if (!portalKeyPath) {
-    console.warn("PORTAL_DEA_SERVICE_ACCOUNT_PATH / PORTAL_DEA_SERVICE_ACCOUNT_KEY is not configured. Portal sync will not work.");
-    return null;
+  let portalServiceAccount: any = null;
+
+  if (portalKeyPath) {
+    try {
+      if (portalKeyPath.trim().startsWith('{')) {
+        portalServiceAccount = JSON.parse(portalKeyPath);
+      } else if (fs.existsSync(portalKeyPath)) {
+        const fileContent = fs.readFileSync(portalKeyPath, 'utf8');
+        portalServiceAccount = JSON.parse(fileContent);
+      }
+    } catch (e) {
+      console.warn("Error leyendo portalKeyPath, usando credenciales integradas:", e);
+    }
+  }
+
+  // Fallback garantizado a credenciales integradas de Portal DEA
+  if (!portalServiceAccount) {
+    portalServiceAccount = PORTAL_SERVICE_ACCOUNT;
   }
 
   try {
-    let portalServiceAccount;
-    // Handle both raw JSON string or file path
-    if (portalKeyPath.trim().startsWith('{')) {
-      portalServiceAccount = JSON.parse(portalKeyPath);
-    } else {
-      const fileContent = fs.readFileSync(portalKeyPath, 'utf8');
-      portalServiceAccount = JSON.parse(fileContent);
-    }
-
     return admin.initializeApp({
       credential: admin.credential.cert(portalServiceAccount),
     }, 'portal-dea');
