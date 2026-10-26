@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DraggablePanel from './DraggablePanel';
 import LayerList from '@/components/layer-manager/LayerList';
 import FileUploadControl from '@/components/layer-manager/FileUploadControl';
