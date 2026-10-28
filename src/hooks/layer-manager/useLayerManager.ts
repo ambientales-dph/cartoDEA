@@ -276,7 +276,6 @@ export const useLayerManager = ({
             const extent3857 = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
             map.getView().fit(extent3857, { padding: [50, 50, 50, 50], duration: 1000 });
         }
-        }
     } else if (layerItem.olLayer instanceof TileLayer) {
         const bbox = layerItem.olLayer.get('bbox') as [number, number, number, number] | undefined;
         if (bbox) {
