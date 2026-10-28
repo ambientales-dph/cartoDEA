@@ -134,7 +134,7 @@ export const useLayerManager = ({
 
   const setLayers = useCallback((updater: React.SetStateAction<(MapLayer | LayerGroup)[]>) => {
     setLayersInternal(prevItems => {
-        const newItems = typeof updater === 'function' ? updater(prevItems) : updater(prevItems);
+        const newItems = typeof updater === 'function' ? updater(prevItems) : updater;
         const operationalLayers: MapLayer[] = [];
         
         newItems.forEach(item => {
@@ -528,8 +528,17 @@ export const useLayerManager = ({
       addLayer({ id: layerId, name, olLayer, visible: true, opacity: 1, type: 'gee', geeParams: params });
   }, [addLayer]);
 
-  const handleAddHybridLayer = useCallback(async (name: string, title: string, url: string, bbox?: [number, number, number, number], style?: string) => {
+  const handleAddHybridLayer = useCallback(async (
+    name: string,
+    title: string,
+    url: string,
+    bbox?: [number, number, number, number],
+    style?: string,
+    projectCode?: string,
+    isDeas?: boolean
+  ) => {
       const layerId = `hybrid-${nanoid()}`;
+      const isDeaLayer = Boolean(isDeas || projectCode);
       const wfsSource = new VectorSource({
           format: new GeoJSON(),
           url: (extent) => `/api/geoserver-proxy?url=${encodeURIComponent(`${url}/wfs?service=WFS&version=1.1.0&request=GetFeature&typename=${name}&outputFormat=application/json&srsname=EPSG:3857&bbox=${extent.join(',')},EPSG:3857`)}`,
@@ -538,10 +547,31 @@ export const useLayerManager = ({
 
       const olLayer = new VectorLayer({
           source: wfsSource,
-          properties: { id: layerId, name: title, type: 'wfs', bbox },
+          properties: {
+            id: layerId,
+            name: title,
+            type: 'wfs',
+            bbox,
+            projectCode,
+            isDeas: isDeaLayer,
+            sourceType: isDeaLayer ? 'dea' : 'wfs',
+          },
       });
 
-      addLayer({ id: layerId, name: title, olLayer, visible: true, opacity: 1, type: 'wfs', url, layerName: name, styleName: style });
+      addLayer({
+        id: layerId,
+        name: title,
+        olLayer,
+        visible: true,
+        opacity: 1,
+        type: 'wfs',
+        url,
+        layerName: name,
+        styleName: style,
+        projectCode,
+        isDeas: isDeaLayer,
+        sourceType: isDeaLayer ? 'dea' : 'wfs',
+      });
       return null;
   }, [addLayer]);
 
@@ -606,6 +636,9 @@ export const useLayerManager = ({
           simpleStyle: defaultStyle,
           geometryType: layer.geometryType,
           featureCount: features.length,
+          isDeas: true,
+          projectCode: layer.projectCode,
+          sourceType: 'dea',
         };
 
         const olLayer = new VectorLayer({
@@ -618,6 +651,9 @@ export const useLayerManager = ({
             geometryType: layer.geometryType,
             featureCount: features.length,
             originalStyleOptions: defaultStyle,
+            isDeas: true,
+            projectCode: layer.projectCode,
+            sourceType: 'dea',
           },
         });
 

@@ -52,7 +52,16 @@ export interface MapLayer {
   visible: boolean;
   opacity: number;
   type: 'wms' | 'wfs' | 'vector' | 'osm' | 'drawing' | 'sentinel' | 'landsat' | 'gee' | 'geotiff' | 'analysis';
+  url?: string;
+  layerName?: string;
+  styleName?: string;
+  geometryType?: string;
+  featureCount?: number;
   isDeas?: boolean;
+  projectCode?: string;
+  sourceType?: 'dea' | 'local' | 'wfs' | 'wms' | 'gee' | 'analysis' | 'drawing' | 'sentinel' | 'landsat' | 'geotiff';
+  originalFileName?: string;
+  sourceOrigin?: string;
   simpleStyle?: StyleOptions; // Persistent simple style state
   graduatedSymbology?: GraduatedSymbology;
   categorizedSymbology?: CategorizedSymbology;

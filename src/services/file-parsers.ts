@@ -45,7 +45,7 @@ const RANDOM_STYLES = [
     { stroke: '#3a86ff', fill: 'rgba(58, 134, 255, 0.7)', name: 'azul' },
 ];
 
-const createVectorLayer = (features: Feature[], layerName: string): MapLayer => {
+const createVectorLayer = (features: Feature[], layerName: string, originalFileName?: string): MapLayer => {
     features.forEach(feature => {
         if (!feature.getId()) {
             feature.setId(nanoid());
@@ -66,9 +66,18 @@ const createVectorLayer = (features: Feature[], layerName: string): MapLayer => 
         pointSize: 5
     };
 
+    const fileName = originalFileName || layerName;
+
     const olLayer = new VectorLayer({
         source,
-        properties: { id: layerId, name: layerName, type: 'vector', originalStyleOptions: simpleStyle },
+        properties: {
+            id: layerId,
+            name: layerName,
+            type: 'vector',
+            originalStyleOptions: simpleStyle,
+            originalFileName: fileName,
+            sourceType: 'local',
+        },
         style: new Style({
             stroke: new Stroke({
                 color: styleDef.stroke,
@@ -99,15 +108,24 @@ const createVectorLayer = (features: Feature[], layerName: string): MapLayer => 
         visible: true,
         opacity: 0.7,
         type: 'vector',
-        simpleStyle: simpleStyle
+        simpleStyle: simpleStyle,
+        originalFileName: fileName,
+        sourceType: 'local',
     };
 };
 
-const createGeoTiffLayer = (source: GeoTIFF, layerName: string): MapLayer => {
+const createGeoTiffLayer = (source: GeoTIFF, layerName: string, originalFileName?: string): MapLayer => {
     const layerId = `${layerName}-${nanoid()}`;
+    const fileName = originalFileName || `${layerName}.tif`;
     const olLayer = new WebGLTileLayer({
         source: source,
-        properties: { id: layerId, name: layerName, type: 'geotiff' },
+        properties: {
+            id: layerId,
+            name: layerName,
+            type: 'geotiff',
+            originalFileName: fileName,
+            sourceType: 'local',
+        },
     });
     return {
         id: layerId,
@@ -116,6 +134,8 @@ const createGeoTiffLayer = (source: GeoTIFF, layerName: string): MapLayer => {
         visible: true,
         opacity: 1,
         type: 'geotiff',
+        originalFileName: fileName,
+        sourceType: 'local',
     };
 };
 
@@ -136,6 +156,9 @@ export const handleFileUpload = async ({
     const processAndAddLayer = async (content: string | ArrayBuffer, file: File, layerNameOverride?: string) => {
         const fileExtension = getFileExtension(file.name);
         const nameForLayer = layerNameOverride || getBaseName(file.name);
+        const origFileName = file.name.endsWith('.zip') && layerNameOverride 
+            ? `${layerNameOverride}.shp`
+            : file.name;
         let features: Feature[] | undefined;
 
         try {
@@ -150,7 +173,7 @@ export const handleFileUpload = async ({
                         normalize: false,
                         nodata: 0,
                     });
-                    onAddLayer(createGeoTiffLayer(source, nameForLayer));
+                    onAddLayer(createGeoTiffLayer(source, nameForLayer, origFileName));
                     toast({ description: `Capa GeoTIFF "${nameForLayer}" cargada.` });
                     return;
                 }
@@ -175,7 +198,7 @@ export const handleFileUpload = async ({
                                 const kmlContent = await kmlFile.async('string');
                                 features = kmlFormat.readFeatures(kmlContent, { dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
                                 if (features && features.length > 0) {
-                                    onAddLayer(createVectorLayer(features, nameForLayer));
+                                    onAddLayer(createVectorLayer(features, nameForLayer, origFileName));
                                     toast({ description: `Capa "${nameForLayer}" cargada con ${features.length} entidades.` });
                                 } else {
                                     toast({ description: `No se encontraron entidades en "${nameForLayer}".` });
@@ -200,7 +223,7 @@ export const handleFileUpload = async ({
             }
 
             if (features && features.length > 0) {
-                onAddLayer(createVectorLayer(features, nameForLayer));
+                onAddLayer(createVectorLayer(features, nameForLayer, origFileName));
                 toast({ description: `Capa "${nameForLayer}" cargada con ${features.length} entidades.` });
             } else {
                toast({ description: `No se encontraron entidades en "${nameForLayer}".` });

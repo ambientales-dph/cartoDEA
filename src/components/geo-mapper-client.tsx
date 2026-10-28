@@ -883,7 +883,15 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
               if (l.downloadUrl) {
                 await layerManagerHook.handleAddGisVectorLayer(l);
               } else {
-                layerManagerHook.handleAddHybridLayer(l.name, l.title, 'https://www.minfra.gba.gob.ar/ambientales/geoserver', l.bbox, l.styleName);
+                layerManagerHook.handleAddHybridLayer(
+                  l.name,
+                  l.title,
+                  'https://www.minfra.gba.gob.ar/ambientales/geoserver',
+                  l.bbox,
+                  l.styleName,
+                  l.projectCode,
+                  true
+                );
               }
             }}
             isFetchingDeasLayers={isFetchingDeasLayers}
