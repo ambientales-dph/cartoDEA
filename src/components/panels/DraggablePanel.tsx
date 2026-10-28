@@ -56,10 +56,10 @@ const DraggablePanel: React.FC<DraggablePanelProps> = ({
 
   useEffect(() => {
     setCurrentSize(prev => ({
-        ...prev,
+        width: typeof initialSize.width === 'number' ? `${initialSize.width}px` : initialSize.width,
         height: isCollapsed ? 'auto' : (typeof initialSize.height === 'number' ? `${initialSize.height}px` : initialSize.height)
     }));
-  }, [isCollapsed, initialSize.height]);
+  }, [isCollapsed, initialSize.height, initialSize.width]);
 
   const handleResizeStop = useCallback(() => {
     if (panelRef.current) {

@@ -158,10 +158,15 @@ const projectFormalNames: { [key: string]: string } = {
   'RSA069': 'Entubamiento Canal Llambías - Trenque Lauquen',
 
   // Proyectos Relevados en Drive (Cuencas EIAS Ambientales)
+  'ARR002': 'Desagües Pluviales en Barrio España - Rojas',
+  'ARR008': 'Presa Pergamino',
   'CM004': 'qwwq',
+  'MAR008': 'Desagües Pluviales Cuenca Arroyo Duppy - Etapa III',
+  'MAR009': 'Desagües Pluviales Lomas de Zamora',
   'MAR011': 'Prueba Gestión proyectos',
   'MAR012': 'Prueba Z',
   'RAR001': 'Adecuación Río Areco',
+  'RAR003': 'Desagües Pluviales Cuenca Este 3ra Etapa - San Antonio de Areco',
   'RAR005': 'Prueba BBB',
   'RLU004': 'Adecuación del cauce del Tramo Medio Río Luján - Etapa II (Luján y Olivera)',
   'RLU006': 'Puente en Calle Cogna',
@@ -170,9 +175,20 @@ const projectFormalNames: { [key: string]: string } = {
   'RLU011': 'Desagües Pluviales - Etapa I (Malvinas Argentinas)',
   'RLU015': 'Desagües Pluviales en la Localidad de Derqui',
   'RLU016': 'Adecuación del río Luján, Etapa 3 - Mercedes',
+  'RPS002': 'Ampliación Planta G. Belgrano y RSS - Quilmes Rivera',
+  'RPS009': 'Desagües Pluviales en Florencio Varela, Barrios Bosques Norte y Ricardo Rojas',
   'RPS010': 'Arroyo San Juan',
-  'RRQ006': 'Evaluación del comportamiento hidráulico de la cuenca del Zanjón Madero, diseño de la estación de bombeo y obras complementarias',
-  'RRQ023': 'Desagües Pluviales San Martin, calles Lange y San Andres',
+  'RSB001': 'Desagües Pluviales Alejandro Korn',
+  'VAE002': 'Sistema de Espigones de Transición y Relleno Artificial de Arena - Camet Norte',
+  'VAE004': 'Desagüe Pluvial en Santa Clara del Mar – Cuenca 5 Partido de Mar Chiquita',
+  'VAS004': 'Readecuación Canal Maldonado - Bahía Blanca',
+  'RRQ004': 'Desagües Pluviales Cuenca Las Cabañas - Ituzaingó',
+  'RRQ005': 'Limpieza Río Reconquista, tramo medio-superior',
+  'RRQ006': 'Zanjón Madero - San Martín (Evaluación y estación de bombeo)',
+  'RRQ009': 'Refuncionalización del sistema presa Roggero y compuertas en el camino del Buen Ayre',
+  'RRQ021': 'Puente sobre Arroyo Los Berros y obras accesorias',
+  'RRQ022': 'Saneamiento Hidráulico Cuenca Defensa – San Miguel',
+  'RRQ023': 'Desagües Pluviales San Martín, calles Lange y San Andrés',
   'RRQ024': 'Probando',
   'RRQ025': 'Desagües Pluviales Cuenca Vergara - Hurlingham',
   'RSA048': 'Puentes sobre Río Salado Ferroviario Salado 4.1b LOTE A - VidelaDorna/Gorch',
@@ -402,8 +418,8 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
       showCloseButton={true}
       style={style} 
       zIndex={style?.zIndex as number | undefined}
-      initialSize={{ width: 350, height: "80vh" }}
-      minSize={{ width: 300, height: 300 }}
+      initialSize={{ width: 420, height: "80vh" }}
+      minSize={{ width: 320, height: 300 }}
     >
       <div className="flex flex-col h-full">
         {!isSharedView && (
@@ -572,10 +588,6 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                   <div className="pr-2 space-y-1 py-1">
                     {Object.keys(hierarchicalDeasLayers).length > 0 ? (
                       Object.entries(hierarchicalDeasLayers).sort(([orgA], [orgB]) => orgA.localeCompare(orgB)).map(([orgName, projects]) => {
-                        const totalOrgLayers = Object.values(projects).reduce(
-                          (sum, cats) => sum + Object.values(cats).reduce((cSum, lList) => cSum + lList.length, 0),
-                          0
-                        );
                         const isOrgOpen = isNodeExpanded(orgName);
 
                         return (
@@ -596,8 +608,8 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                               >
                                 {isOrgOpen ? <Minus className="h-2.5 w-2.5 stroke-[2.5]" /> : <Plus className="h-2.5 w-2.5 stroke-[2.5]" />}
                               </button>
-                              <span className="text-xs font-semibold truncate group-hover:text-white">
-                                {orgName} ({totalOrgLayers})
+                              <span className="text-[10px] font-semibold truncate group-hover:text-white">
+                                {orgName}
                               </span>
                             </div>
 
@@ -605,18 +617,14 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                             {isOrgOpen && (
                               <div className="ml-3 pl-2.5 border-l border-slate-700/60 space-y-1 mt-0.5">
                                 {Object.entries(projects).sort(([projA], [projB]) => projA.localeCompare(projB)).map(([projectName, categories]) => {
-                                  const totalProjLayers = Object.values(categories).reduce(
-                                    (sum, lList) => sum + lList.length,
-                                    0
-                                  );
                                   const projKey = `${orgName}/${projectName}`;
                                   const isProjOpen = isNodeExpanded(projKey);
-                                  const formalName = projectFormalNames[projectName.toUpperCase()] || projectName;
+                                  const formalName = projectFormalNames[projectName.toUpperCase()];
 
                                   return (
                                     <div key={projectName}>
                                       <div 
-                                        className="flex items-center gap-1.5 py-1 px-1 rounded hover:bg-white/5 cursor-pointer text-slate-200 group"
+                                        className="flex items-center gap-1.5 py-1 px-1 rounded hover:bg-white/5 cursor-pointer text-slate-200 group w-full min-w-0 overflow-hidden"
                                         onClick={() => {
                                           const willOpen = !isProjOpen;
                                           toggleNodeExpanded(projKey);
@@ -640,32 +648,13 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                         >
                                           {isProjOpen ? <Minus className="h-2.5 w-2.5 stroke-[2.5]" /> : <Plus className="h-2.5 w-2.5 stroke-[2.5]" />}
                                         </button>
-                                        <TooltipProvider delayDuration={150}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span 
-                                                className="text-xs font-medium truncate group-hover:text-white underline decoration-dotted decoration-slate-500/60 underline-offset-2"
-                                              >
-                                                {projectName} ({totalProjLayers})
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent 
-                                              side="right" 
-                                              align="center" 
-                                              className="bg-slate-900/95 backdrop-blur border border-slate-700 text-white max-w-xs shadow-xl p-2 z-[9999]"
-                                            >
-                                              <p className="text-[11px] font-semibold text-sky-400">{projectName}</p>
-                                              <p className="text-xs text-slate-200 mt-0.5 leading-snug">{formalName}</p>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
 
-                                        {/* Botón manual de sincronización por proyecto */}
+                                        {/* Botón manual de sincronización activa circular (SIEMPRE VISIBLE junto al botón expandir) */}
                                         {onSyncProject && (
                                           <button
                                             type="button"
                                             className={cn(
-                                              "h-4 w-4 shrink-0 flex items-center justify-center rounded p-0 text-white/30 hover:text-sky-300 hover:bg-white/10 transition-colors ml-auto mr-1",
+                                              "h-4 w-4 shrink-0 flex items-center justify-center rounded p-0 text-white/40 hover:text-sky-300 hover:bg-white/10 transition-colors",
                                               syncingProjectCode === projectName && "text-sky-400"
                                             )}
                                             onClick={(e) => {
@@ -682,6 +671,29 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                             />
                                           </button>
                                         )}
+
+                                        <TooltipProvider delayDuration={150}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span 
+                                                className="min-w-0 flex-1 truncate text-[10px] font-medium group-hover:text-white underline decoration-dotted decoration-slate-500/60 underline-offset-2 block"
+                                              >
+                                                <span className="font-semibold text-slate-100">{projectName}</span>
+                                                {formalName ? (
+                                                  <span className="text-slate-300 font-normal"> - {formalName}</span>
+                                                ) : null}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent 
+                                              side="right" 
+                                              align="center" 
+                                              className="bg-slate-900/95 backdrop-blur border border-slate-700 text-white max-w-xs shadow-xl p-2 z-[9999]"
+                                            >
+                                              <p className="text-[10px] font-semibold text-sky-400">{projectName}</p>
+                                              <p className="text-[10px] text-slate-200 mt-0.5 leading-snug">{formalName || projectName}</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
                                       </div>
 
                                       {/* Nivel 3: Subcarpetas de GIS (justificadas a la izquierda) */}
@@ -694,7 +706,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                             return (
                                               <div key={categoryName}>
                                                 <div 
-                                                  className="flex items-center gap-1.5 py-1 px-1 rounded hover:bg-white/5 cursor-pointer text-amber-300/90 group"
+                                                  className="flex items-center gap-1.5 py-1 px-1 rounded hover:bg-white/5 cursor-pointer text-amber-300/90 group min-w-0"
                                                   onClick={() => toggleNodeExpanded(catKey)}
                                                 >
                                                   <button
@@ -709,12 +721,12 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                     {isCatOpen ? <Minus className="h-2.5 w-2.5 stroke-[2.5]" /> : <Plus className="h-2.5 w-2.5 stroke-[2.5]" />}
                                                   </button>
                                                   {isCatOpen ? (
-                                                    <FolderOpen className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                                    <FolderOpen className="h-3 w-3 text-amber-400 shrink-0" />
                                                   ) : (
-                                                    <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                                    <Folder className="h-3 w-3 text-amber-400 shrink-0" />
                                                   )}
-                                                  <span className="text-[11px] font-medium truncate group-hover:text-amber-200">
-                                                    {categoryName.toUpperCase()} ({projectLayers.length})
+                                                  <span className="text-[9px] font-medium truncate group-hover:text-amber-200">
+                                                    {categoryName.toUpperCase()}
                                                   </span>
                                                 </div>
 
@@ -726,7 +738,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                       return (
                                                         <div 
                                                           key={layer.name} 
-                                                          className="flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer"
+                                                          className="flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer min-w-0"
                                                           onClick={() => {
                                                             if (!added) onAddDeasLayer(layer);
                                                           }}
@@ -747,14 +759,14 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                             disabled={added}
                                                           >
                                                             {added ? (
-                                                              <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                                              <Check className="h-3 w-3 stroke-[2.5]" />
                                                             ) : (
-                                                              <Layers className="h-3.5 w-3.5" />
+                                                              <Layers className="h-3 w-3" />
                                                             )}
                                                           </button>
                                                           <span
                                                             className={cn(
-                                                              "text-xs font-normal flex-1 truncate transition-colors",
+                                                              "text-[10px] font-normal flex-1 truncate transition-colors",
                                                               added ? "text-emerald-300 font-medium" : "text-white/80 group-hover:text-white"
                                                             )}
                                                           >
@@ -779,7 +791,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                         );
                       })
                     ) : (
-                      <p className="p-4 text-center text-xs text-gray-400">
+                      <p className="p-4 text-center text-[10px] text-gray-400">
                         {isFetchingDeasLayers ? "Cargando capas..." : "No se encontraron resultados."}
                       </p>
                     )}
