@@ -90,6 +90,9 @@ export const useGeoServerLayers = ({
                 geometryType: l.geometryType,
                 featureCount: l.featureCount,
                 projectCode: layerProjectCode,
+                isDownloadOnly: l.isDownloadOnly ?? (l.category === 'img' || l.category === 'dem'),
+                sizeBytes: l.sizeBytes,
+                driveFileId: l.driveFileId,
                 wmsAddedToMap: false,
                 wfsAddedToMap: false,
               };

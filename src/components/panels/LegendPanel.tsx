@@ -8,7 +8,7 @@ import FileUploadControl from '@/components/layer-manager/FileUploadControl';
 import FeatureInteractionToolbar from '@/components/feature-inspection/FeatureInteractionToolbar';
 import { Separator } from '@/components/ui/separator';
 import type { MapLayer, GeoServerDiscoveredLayer, LabelOptions, GraduatedSymbology, CategorizedSymbology, GeoTiffStyle, LayerGroup } from '@/lib/types';
-import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group, Folder, FolderOpen, Check, Plus, Minus, Layers } from 'lucide-react'; 
+import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group, Folder, FolderOpen, Check, Plus, Minus, Layers, Image as ImageIcon, Download } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from "@/lib/utils";
@@ -637,15 +637,33 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                 {isCatOpen && (
                                                   <div className="ml-3 pl-2.5 border-l border-slate-700/40 space-y-1 mt-0.5">
                                                     {projectLayers.sort((a,b) => a.title.localeCompare(b.title)).map(layer => {
+                                                      const isRaster = Boolean(layer.isDownloadOnly || layer.category === 'img' || layer.category === 'dem');
                                                       const added = isLayerAdded(layer);
+                                                      const sizeMB = layer.sizeBytes ? (layer.sizeBytes / (1024 * 1024)).toFixed(1) : null;
+                                                      const sizeLabel = sizeMB ? ` (${sizeMB} MB)` : '';
+
+                                                      const handleLayerClick = () => {
+                                                        if (isRaster && layer.downloadUrl) {
+                                                          window.open(layer.downloadUrl, '_blank');
+                                                        }
+                                                        if (!added) onAddDeasLayer(layer);
+                                                      };
+
                                                       return (
                                                         <div 
                                                           key={layer.name} 
-                                                          className="flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer min-w-0"
-                                                          onClick={() => {
-                                                            if (!added) onAddDeasLayer(layer);
-                                                          }}
-                                                          title={added ? "Capa agregada (quitar desde la lista de capas)" : "Cargar capa en el mapa"}
+                                                          className={cn(
+                                                            "flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer min-w-0",
+                                                            isRaster && "hover:bg-amber-500/10"
+                                                          )}
+                                                          onClick={handleLayerClick}
+                                                          title={
+                                                            isRaster
+                                                              ? `Ráster: ${layer.title}${sizeLabel}\n• Clic para descargar archivo desde Google Drive\n• Añade el área de cobertura al mapa`
+                                                              : added
+                                                                ? "Capa agregada (quitar desde la lista de capas)"
+                                                                : "Cargar capa en el mapa"
+                                                          }
                                                         >
                                                           <button 
                                                             type="button" 
@@ -653,16 +671,20 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                               "p-0.5 rounded transition-colors flex-shrink-0 flex items-center justify-center bg-transparent border-0",
                                                               added
                                                                 ? "text-emerald-400 cursor-default"
-                                                                : "text-sky-400 group-hover:text-sky-300"
+                                                                : isRaster
+                                                                  ? "text-amber-400 group-hover:text-amber-300"
+                                                                  : "text-sky-400 group-hover:text-sky-300"
                                                             )}
                                                             onClick={(e) => {
                                                               e.stopPropagation();
-                                                              if (!added) onAddDeasLayer(layer);
+                                                              handleLayerClick();
                                                             }}
-                                                            disabled={added}
+                                                            disabled={added && !isRaster}
                                                           >
                                                             {added ? (
                                                               <Check className="h-3 w-3 stroke-[2.5]" />
+                                                            ) : isRaster ? (
+                                                              <ImageIcon className="h-3 w-3" />
                                                             ) : (
                                                               <Layers className="h-3 w-3" />
                                                             )}
@@ -670,11 +692,20 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                           <span
                                                             className={cn(
                                                               "text-[10px] font-normal flex-1 truncate transition-colors",
-                                                              added ? "text-emerald-300 font-medium" : "text-white/80 group-hover:text-white"
+                                                              added
+                                                                ? "text-emerald-300 font-medium"
+                                                                : isRaster
+                                                                  ? "text-amber-200/90 group-hover:text-amber-100"
+                                                                  : "text-white/80 group-hover:text-white"
                                                             )}
                                                           >
                                                             {layer.title}
                                                           </span>
+                                                          {isRaster && sizeMB && (
+                                                            <span className="text-[8px] font-mono text-amber-300/80 bg-amber-400/10 px-1 py-0.2 rounded shrink-0">
+                                                              {sizeMB} MB
+                                                            </span>
+                                                          )}
                                                         </div>
                                                       );
                                                     })}

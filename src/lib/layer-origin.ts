@@ -4,6 +4,10 @@ import { projectFormalNames, deasOrgNames } from '@/lib/project-names';
 export interface LayerOriginInfo {
   isDea: boolean;
   isLocal: boolean;
+  isRaster?: boolean;
+  isDownloadOnly?: boolean;
+  sizeBytes?: number;
+  downloadUrl?: string;
   projectCode?: string;
   projectName?: string;
   cuencaName?: string;
@@ -12,6 +16,22 @@ export interface LayerOriginInfo {
 }
 
 export function getLayerOriginInfo(layer: MapLayer): LayerOriginInfo {
+  const isRaster =
+    Boolean(layer.isDownloadOnly) ||
+    Boolean(layer.isFootprint) ||
+    layer.category === 'img' ||
+    layer.category === 'dem' ||
+    (typeof layer.olLayer?.get === 'function' && Boolean(layer.olLayer.get('isFootprint')));
+
+  const downloadUrl =
+    layer.downloadUrl ||
+    layer.url ||
+    (typeof layer.olLayer?.get === 'function' ? layer.olLayer.get('downloadUrl') : undefined);
+
+  const sizeBytes =
+    layer.sizeBytes ||
+    (typeof layer.olLayer?.get === 'function' ? layer.olLayer.get('sizeBytes') : undefined);
+
   // 1. Detección de Capa DEA (Proyectos estandarizados de la Dirección)
   let projectCode: string | undefined =
     layer.projectCode ||
@@ -55,10 +75,14 @@ export function getLayerOriginInfo(layer: MapLayer): LayerOriginInfo {
     return {
       isDea: true,
       isLocal: false,
+      isRaster,
+      isDownloadOnly: isRaster,
+      sizeBytes,
+      downloadUrl,
       projectCode: cleanCode,
       projectName: formalName || cleanCode,
       cuencaName,
-      sourceLabel: 'Proyecto DEA',
+      sourceLabel: isRaster ? 'Ráster Proyecto DEA' : 'Proyecto DEA',
       sourceDescription: desc,
     };
   }
@@ -67,7 +91,11 @@ export function getLayerOriginInfo(layer: MapLayer): LayerOriginInfo {
     return {
       isDea: true,
       isLocal: false,
-      sourceLabel: 'Proyecto DEA',
+      isRaster,
+      isDownloadOnly: isRaster,
+      sizeBytes,
+      downloadUrl,
+      sourceLabel: isRaster ? 'Ráster Proyecto DEA' : 'Proyecto DEA',
       sourceDescription: 'Capa de Cuenca DEA PBA',
     };
   }

@@ -292,7 +292,38 @@ const LayerItem: React.FC<LayerItemProps> = ({
                     sideOffset={10}
                     className="bg-slate-900/85 backdrop-blur-sm border border-white/10 text-slate-100 text-[10px] px-2.5 py-1.5 rounded shadow-xl max-w-xs z-50 pointer-events-none"
                   >
-                    {originInfo.isDea ? (
+                    {originInfo.isRaster ? (
+                      <div className="space-y-1">
+                        <p className="font-semibold text-slate-100 flex items-center gap-1.5">
+                          <ImageIcon className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                          <span className="truncate">{layer.name}</span>
+                        </p>
+                        <p className="text-slate-300">
+                          <span className="text-amber-300 font-medium">Tipo:</span> Ráster (Área de cobertura)
+                        </p>
+                        {originInfo.projectCode && (
+                          <p className="text-slate-300">
+                            <span className="text-sky-300 font-medium">Proyecto:</span>{' '}
+                            {originInfo.projectCode}
+                            {originInfo.projectName && originInfo.projectName !== originInfo.projectCode
+                              ? ` - ${originInfo.projectName}`
+                              : ''}
+                          </p>
+                        )}
+                        {originInfo.cuencaName && (
+                          <p className="text-[9px] text-slate-400">{originInfo.cuencaName}</p>
+                        )}
+                        {originInfo.sizeBytes ? (
+                          <p className="text-slate-300">
+                            <span className="text-amber-300 font-medium">Tamaño:</span>{' '}
+                            {(originInfo.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+                          </p>
+                        ) : null}
+                        <p className="text-[9px] text-amber-300/90 font-medium pt-0.5 border-t border-white/10">
+                          ℹ Archivo disponible para descarga desde Google Drive.
+                        </p>
+                      </div>
+                    ) : originInfo.isDea ? (
                       <div className="space-y-0.5">
                         <p className="font-semibold text-slate-100">{layer.name}</p>
                         <p className="text-slate-300">
@@ -347,6 +378,15 @@ const LayerItem: React.FC<LayerItemProps> = ({
             <ContextMenuItem onSelect={() => props.onZoomToExtent(layer.id)} className="text-xs">
               <ZoomIn className="mr-2 h-3.5 w-3.5" /> Ir a la extensión
             </ContextMenuItem>
+
+            {originInfo.downloadUrl && (
+              <ContextMenuItem
+                onSelect={() => window.open(originInfo.downloadUrl, '_blank')}
+                className="text-xs text-amber-300 focus:text-amber-200 focus:bg-amber-500/20"
+              >
+                <Download className="mr-2 h-3.5 w-3.5 text-amber-400" /> Descargar ráster desde Drive
+              </ContextMenuItem>
+            )}
             <ContextMenuItem onSelect={(e) => { e.preventDefault(); setIsRenameDialogOpen(true); }} className="text-xs">
               <Edit className="mr-2 h-3.5 w-3.5" /> Renombrar Capa
             </ContextMenuItem>

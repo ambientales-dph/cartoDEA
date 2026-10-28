@@ -9,7 +9,8 @@ import TileLayer from 'ol/layer/Tile';
 import TileWMS from 'ol/source/TileWMS';
 import XYZ from 'ol/source/XYZ';
 import GeoJSON from 'ol/format/GeoJSON';
-import type Feature from 'ol/Feature';
+import Feature from 'ol/Feature';
+import { fromExtent } from 'ol/geom/Polygon';
 import { Geometry } from 'ol/geom';
 import { transformExtent } from 'ol/proj';
 import { Style, Fill, Stroke, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
@@ -584,6 +585,100 @@ export const useLayerManager = ({
         ? 'http://localhost:9003'
         : (process.env.NEXT_PUBLIC_PORTAL_URL || 'http://localhost:9003');
 
+      const isRaster = Boolean(layer.isDownloadOnly || layer.category === 'img' || layer.category === 'dem');
+
+      // Si es un ráster de descarga, representamos su huella geográfica (footprint) sin descargar el binario
+      if (isRaster) {
+        const bbox = layer.bbox || [-60.5, -36.5, -57.5, -34.0];
+        const extent3857 = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
+        const footprintGeom = fromExtent(extent3857);
+
+        const footprintFeature = new Feature({
+          geometry: footprintGeom,
+          name: layer.title,
+          tipo: 'Footprint Ráster',
+          proyecto: layer.projectCode,
+          categoria: layer.category,
+          sizeBytes: layer.sizeBytes,
+          downloadUrl: layer.downloadUrl,
+        });
+        footprintFeature.setId(`${layerId}-footprint`);
+
+        const vectorSource = new VectorSource({
+          features: [footprintFeature],
+        });
+
+        const footprintStyle: StyleOptions = {
+          strokeColor: '#f59e0b',
+          fillColor: 'rgba(245, 158, 11, 0.12)',
+          lineWidth: 2,
+          lineStyle: 'dashed',
+          pointSize: 5,
+        };
+
+        const newMapLayer: MapLayer = {
+          id: layerId,
+          name: `${layer.title} [Footprint]`,
+          olLayer: null as any,
+          visible: true,
+          opacity: 1,
+          type: 'vector',
+          url: layer.downloadUrl,
+          downloadUrl: layer.downloadUrl,
+          layerName: layer.name,
+          simpleStyle: footprintStyle,
+          geometryType: 'Polygon',
+          featureCount: 1,
+          isDeas: true,
+          projectCode: layer.projectCode,
+          sourceType: 'dea',
+          isDownloadOnly: true,
+          sizeBytes: layer.sizeBytes,
+          isFootprint: true,
+          category: layer.category,
+        };
+
+        const olLayer = new VectorLayer({
+          source: vectorSource,
+          properties: {
+            id: layerId,
+            name: newMapLayer.name,
+            type: 'vector',
+            bbox: layer.bbox,
+            geometryType: 'Polygon',
+            featureCount: 1,
+            originalStyleOptions: footprintStyle,
+            isDeas: true,
+            projectCode: layer.projectCode,
+            sourceType: 'dea',
+            isDownloadOnly: true,
+            sizeBytes: layer.sizeBytes,
+            isFootprint: true,
+            downloadUrl: layer.downloadUrl,
+          },
+        });
+
+        olLayer.setStyle(createLayerStyle(newMapLayer));
+        newMapLayer.olLayer = olLayer;
+
+        addLayer(newMapLayer);
+
+        if (!options?.skipFit && mapRef.current) {
+          mapRef.current.getView().fit(extent3857, { duration: 900, padding: [60, 60, 60, 60] });
+        }
+
+        if (!options?.skipToast) {
+          const sizeMB = layer.sizeBytes ? (layer.sizeBytes / (1024 * 1024)).toFixed(1) : null;
+          const sizeText = sizeMB ? ` (${sizeMB} MB)` : '';
+          toast({
+            title: 'Ráster: Área de cobertura añadida',
+            description: `Visualizando footprint de "${layer.title}"${sizeText}. Archivo disponible para descarga desde Google Drive.`,
+          });
+        }
+
+        return olLayer;
+      }
+
       let fullUrl = layer.downloadUrl || '';
 
       if (fullUrl.startsWith('https://storage.googleapis.com') && layer.projectCode) {
@@ -699,7 +794,7 @@ export const useLayerManager = ({
   ) => {
     const targetCode = projectCode.toUpperCase().trim();
     const projectLayers = allDiscoveredLayers.filter(
-      l => (l.projectCode || '').toUpperCase() === targetCode
+      l => (l.projectCode || '').toUpperCase() === targetCode && !l.isDownloadOnly && l.category !== 'img' && l.category !== 'dem'
     );
 
     if (projectLayers.length === 0) {

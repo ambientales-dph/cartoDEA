@@ -62,6 +62,11 @@ export interface MapLayer {
   sourceType?: 'dea' | 'local' | 'wfs' | 'wms' | 'gee' | 'analysis' | 'drawing' | 'sentinel' | 'landsat' | 'geotiff';
   originalFileName?: string;
   sourceOrigin?: string;
+  isDownloadOnly?: boolean;
+  sizeBytes?: number;
+  isFootprint?: boolean;
+  category?: string;
+  downloadUrl?: string;
   simpleStyle?: StyleOptions; // Persistent simple style state
   graduatedSymbology?: GraduatedSymbology;
   categorizedSymbology?: CategorizedSymbology;
@@ -114,6 +119,9 @@ export interface GeoServerDiscoveredLayer {
   geometryType?: string;
   featureCount?: number;
   projectCode?: string;
+  isDownloadOnly?: boolean;
+  sizeBytes?: number;
+  driveFileId?: string;
 }
 
 export interface BaseLayerOptionForSelect {
