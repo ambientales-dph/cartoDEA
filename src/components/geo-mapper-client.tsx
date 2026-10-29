@@ -3,6 +3,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
+  Activity,
   MapPinned,
   Database,
   Wrench,
@@ -83,6 +84,8 @@ import { StreetViewIcon } from '@/components/icons/StreetViewIcon';
 import { DphLogoIcon } from '@/components/icons/DphLogoIcon';
 import Notepad from '@/components/notepad/Notepad';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
+import MonitoringReportPanel from '@/components/panels/MonitoringReportPanel';
+import { useDataBusMonitoring, type MonitoringReportData } from '@/hooks/useDataBusMonitoring';
 
 import { useOpenLayersMap } from '@/hooks/map-core/useOpenLayersMap';
 import { useLayerManager } from '@/hooks/layer-manager/useLayerManager';
@@ -168,6 +171,7 @@ const panelToggleConfigs = [
   { id: 'tools', IconComponent: Wrench, name: 'Herramientas' },
   { id: 'analysis', IconComponent: DraftingCompass, name: 'Análisis Espacial' },
   { id: 'clima', IconComponent: CloudRain, name: 'Clima y Satélite' },
+  { id: 'monitoringReport', IconComponent: Activity, name: 'Reporte de Monitoreo' },
   { id: 'trello', IconComponent: ClipboardCheck, name: 'Trello' },
   { id: 'printComposer', IconComponent: Printer, name: 'Impresión' },
   { id: 'gee', IconComponent: BrainCircuit, name: 'Procesamiento GEE' },
@@ -194,6 +198,10 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
   const statisticsPanelRef = useRef<HTMLDivElement>(null);
   const analysisPanelRef = useRef<HTMLDivElement>(null);
   const climaPanelRef = useRef<HTMLDivElement>(null);
+  const monitoringReportPanelRef = useRef<HTMLDivElement>(null);
+
+  const [selectedMonitoringData, setSelectedMonitoringData] = useState<MonitoringReportData | null>(null);
+  const { monitoringDiscoveredLayers, createMonitoringVectorLayer } = useDataBusMonitoring();
   
   const [isSaveMapDialogOpen, setIsSaveMapDialogOpen] = useState(false);
   const [isLoadMapDialogOpen, setIsLoadMapDialogOpen] = useState(false);
@@ -264,6 +272,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       statisticsPanelRef,
       analysisPanelRef,
       climaPanelRef,
+      monitoringReportPanelRef,
       mapAreaRef,
       panelWidth: PANEL_WIDTH,
       panelPadding: PANEL_PADDING,
@@ -760,6 +769,67 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     setIsSaveMapDialogOpen(false);
   }, [mapRef, mapSubject, activeBaseLayerId, firestore, user, toast]);
 
+  const combinedDiscoveredDeasLayers = useMemo(() => {
+    return [...discoveredGeoServerLayers, ...monitoringDiscoveredLayers];
+  }, [discoveredGeoServerLayers, monitoringDiscoveredLayers]);
+
+  // Manejador de click e inspección directa en el mapa para estaciones de monitoreo
+  useEffect(() => {
+    if (!isMapReady || !mapRef.current) return;
+    const map = mapRef.current;
+
+    const handleMapClick = (e: any) => {
+      if (activeTool.type === 'draw' || activeTool.type === 'measure') return;
+
+      map.forEachFeatureAtPixel(e.pixel, (feature) => {
+        if (feature.get('isMonitoringStation') || feature.get('reportId')) {
+          const reportId = feature.get('reportId');
+          if (reportId) {
+            const mData: MonitoringReportData = {
+              reportId,
+              reportOid: feature.get('reportOid') || 'RM',
+              stationId: feature.get('stationId') || '',
+              stationName: feature.get('stationName') || 'Estación',
+              basinCode: feature.get('basinCode') || '',
+              latitude: feature.get('latitude') || 0,
+              longitude: feature.get('longitude') || 0,
+              projectCode: feature.get('projectCode') || '',
+              trelloCardName: feature.get('trelloCardName') || '',
+              surveyId: feature.get('surveyId') || '',
+              dateLabel: feature.get('dateLabel') || '',
+              createdAt: feature.get('createdAt') || new Date(),
+              createdByEmail: feature.get('createdByEmail') || '',
+              status: feature.get('status') || '',
+            };
+            setSelectedMonitoringData(mData);
+            if (panels.monitoringReport.isMinimized) {
+              togglePanelMinimize('monitoringReport');
+            }
+            return true;
+          }
+        }
+      });
+    };
+
+    const handlePointerMove = (e: any) => {
+      if (e.dragging) return;
+      const pixel = map.getEventPixel(e.originalEvent);
+      const hit = map.hasFeatureAtPixel(pixel, (layer) => (layer as any)?.get('isMonitoringLayer') === true);
+      const targetElement = map.getTargetElement();
+      if (targetElement) {
+        targetElement.style.cursor = hit ? 'pointer' : '';
+      }
+    };
+
+    map.on('singleclick', handleMapClick);
+    map.on('pointermove', handlePointerMove);
+
+    return () => {
+      map.un('singleclick', handleMapClick);
+      map.un('pointermove', handlePointerMove);
+    };
+  }, [isMapReady, activeTool, panels.monitoringReport.isMinimized, togglePanelMinimize]);
+
   return (
     <div className="flex h-screen w-screen flex-col bg-background text-foreground">
       {!initialMapState && <FirebaseErrorListener />}
@@ -878,9 +948,13 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             activeTool={featureInspectionHook.activeTool}
             onSetActiveTool={featureInspectionHook.setActiveTool}
             onClearSelection={featureInspectionHook.clearSelection}
-            discoveredDeasLayers={discoveredGeoServerLayers}
+            discoveredDeasLayers={combinedDiscoveredDeasLayers}
             onAddDeasLayer={async (l) => {
-              if (l.downloadUrl) {
+              if (l.isMonitoring) {
+                const mLayer = createMonitoringVectorLayer(l);
+                layerManagerHook.addLayer(mLayer, true);
+                toast({ description: `Capa "${l.title}" añadida al mapa.` });
+              } else if (l.downloadUrl) {
                 await layerManagerHook.handleAddGisVectorLayer(l);
               } else {
                 layerManagerHook.handleAddHybridLayer(
@@ -1042,6 +1116,22 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onClosePanel={() => togglePanelMinimize('help')}
             onMouseDownHeader={(e) => handlePanelMouseDown(e, 'help')}
             style={{ top: `${panels.help.position.y}px`, left: `${panels.help.position.x}px`, zIndex: panels.help.zIndex }}
+          />
+        )}
+
+        {isClientMounted && !panels.monitoringReport.isMinimized && selectedMonitoringData && (
+          <MonitoringReportPanel
+            panelRef={monitoringReportPanelRef}
+            reportData={selectedMonitoringData}
+            isCollapsed={panels.monitoringReport.isCollapsed}
+            onToggleCollapse={() => togglePanelCollapse('monitoringReport')}
+            onClosePanel={() => togglePanelMinimize('monitoringReport')}
+            onMouseDownHeader={(e) => handlePanelMouseDown(e, 'monitoringReport')}
+            style={{
+              top: `${panels.monitoringReport.position.y}px`,
+              left: `${panels.monitoringReport.position.x}px`,
+              zIndex: panels.monitoringReport.zIndex,
+            }}
           />
         )}
 

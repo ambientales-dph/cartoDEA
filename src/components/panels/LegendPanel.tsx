@@ -8,7 +8,7 @@ import FileUploadControl from '@/components/layer-manager/FileUploadControl';
 import FeatureInteractionToolbar from '@/components/feature-inspection/FeatureInteractionToolbar';
 import { Separator } from '@/components/ui/separator';
 import type { MapLayer, GeoServerDiscoveredLayer, LabelOptions, GraduatedSymbology, CategorizedSymbology, GeoTiffStyle, LayerGroup } from '@/lib/types';
-import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group, Folder, FolderOpen, Check, Plus, Minus, Layers, Image as ImageIcon, Download } from 'lucide-react'; 
+import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group, Folder, FolderOpen, Check, Plus, Minus, Layers, Image as ImageIcon, Download, Activity } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from "@/lib/utils";
@@ -624,11 +624,11 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                     {isCatOpen ? <Minus className="h-2.5 w-2.5 stroke-[2.5]" /> : <Plus className="h-2.5 w-2.5 stroke-[2.5]" />}
                                                   </button>
                                                   {isCatOpen ? (
-                                                    <FolderOpen className="h-3 w-3 text-amber-400 shrink-0" />
+                                                    <FolderOpen className={cn("h-3 w-3 shrink-0", categoryName === 'MONITOREO' ? "text-teal-400" : "text-amber-400")} />
                                                   ) : (
-                                                    <Folder className="h-3 w-3 text-amber-400 shrink-0" />
+                                                    <Folder className={cn("h-3 w-3 shrink-0", categoryName === 'MONITOREO' ? "text-teal-400" : "text-amber-400")} />
                                                   )}
-                                                  <span className="text-[9px] font-medium truncate group-hover:text-amber-200">
+                                                  <span className={cn("text-[9px] font-medium truncate", categoryName === 'MONITOREO' ? "text-teal-300 font-semibold group-hover:text-teal-200" : "group-hover:text-amber-200")}>
                                                     {categoryName.toUpperCase()}
                                                   </span>
                                                 </div>
@@ -638,6 +638,7 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                   <div className="ml-3 pl-2.5 border-l border-slate-700/40 space-y-1 mt-0.5">
                                                     {projectLayers.sort((a,b) => a.title.localeCompare(b.title)).map(layer => {
                                                       const isRaster = Boolean(layer.isDownloadOnly || layer.category === 'img' || layer.category === 'dem');
+                                                      const isMonitoring = Boolean(layer.isMonitoring);
                                                       const added = isLayerAdded(layer);
                                                       const sizeMB = layer.sizeBytes ? (layer.sizeBytes / (1024 * 1024)).toFixed(1) : null;
                                                       const sizeLabel = sizeMB ? ` (${sizeMB} MB)` : '';
@@ -654,15 +655,18 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                           key={layer.name} 
                                                           className={cn(
                                                             "flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer min-w-0",
-                                                            isRaster && "hover:bg-amber-500/10"
+                                                            isRaster && "hover:bg-amber-500/10",
+                                                            isMonitoring && "hover:bg-teal-500/10"
                                                           )}
                                                           onClick={handleLayerClick}
                                                           title={
-                                                            isRaster
-                                                              ? `Ráster: ${layer.title}${sizeLabel}\n• Clic para descargar archivo desde Google Drive\n• Añade el área de cobertura al mapa`
-                                                              : added
-                                                                ? "Capa agregada (quitar desde la lista de capas)"
-                                                                : "Cargar capa en el mapa"
+                                                            isMonitoring
+                                                              ? `Monitoreo de Campo: ${layer.title}\n• Clic para cargar la estación en el mapa\n• Al hacer clic en la estación se abre el reporte técnico`
+                                                              : isRaster
+                                                                ? `Ráster: ${layer.title}${sizeLabel}\n• Clic para descargar archivo desde Google Drive\n• Añade el área de cobertura al mapa`
+                                                                : added
+                                                                  ? "Capa agregada (quitar desde la lista de capas)"
+                                                                  : "Cargar capa en el mapa"
                                                           }
                                                         >
                                                           <button 
@@ -671,9 +675,11 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                               "p-0.5 rounded transition-colors flex-shrink-0 flex items-center justify-center bg-transparent border-0",
                                                               added
                                                                 ? "text-emerald-400 cursor-default"
-                                                                : isRaster
-                                                                  ? "text-amber-400 group-hover:text-amber-300"
-                                                                  : "text-sky-400 group-hover:text-sky-300"
+                                                                : isMonitoring
+                                                                  ? "text-teal-400 group-hover:text-teal-300"
+                                                                  : isRaster
+                                                                    ? "text-amber-400 group-hover:text-amber-300"
+                                                                    : "text-sky-400 group-hover:text-sky-300"
                                                             )}
                                                             onClick={(e) => {
                                                               e.stopPropagation();
@@ -683,6 +689,8 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                           >
                                                             {added ? (
                                                               <Check className="h-3 w-3 stroke-[2.5]" />
+                                                            ) : isMonitoring ? (
+                                                              <Activity className="h-3 w-3" />
                                                             ) : isRaster ? (
                                                               <ImageIcon className="h-3 w-3" />
                                                             ) : (

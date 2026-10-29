@@ -122,6 +122,21 @@ export interface GeoServerDiscoveredLayer {
   isDownloadOnly?: boolean;
   sizeBytes?: number;
   driveFileId?: string;
+  isMonitoring?: boolean;
+  reportId?: string;
+  reportOid?: string;
+  stationId?: string;
+  stationName?: string;
+  basinCode?: string;
+  latitude?: number;
+  longitude?: number;
+  dateLabel?: string;
+  createdAt?: Date;
+  createdByEmail?: string;
+  status?: string;
+  description?: string;
+  trelloCardName?: string;
+  surveyId?: string;
 }
 
 export interface BaseLayerOptionForSelect {

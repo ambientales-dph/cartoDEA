@@ -3,7 +3,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 
-type PanelId = 'tools' | 'legend' | 'attributes' | 'trello' | 'wfsLibrary' | 'help' | 'printComposer' | 'gee' | 'statistics' | 'analysis' | 'clima';
+type PanelId = 'tools' | 'legend' | 'attributes' | 'trello' | 'wfsLibrary' | 'help' | 'printComposer' | 'gee' | 'statistics' | 'analysis' | 'clima' | 'monitoringReport';
 
 interface PanelState {
   isMinimized: boolean;
@@ -24,6 +24,7 @@ interface UseFloatingPanelsProps {
   statisticsPanelRef: React.RefObject<HTMLDivElement>;
   analysisPanelRef: React.RefObject<HTMLDivElement>;
   climaPanelRef: React.RefObject<HTMLDivElement>;
+  monitoringReportPanelRef?: React.RefObject<HTMLDivElement>;
   mapAreaRef: React.RefObject<HTMLDivElement>;
   panelWidth: number;
   panelPadding: number;
@@ -38,6 +39,7 @@ const panelCascadeOrder: PanelId[] = [
     'tools', 
     'analysis',
     'clima',
+    'monitoringReport',
     'trello', 
     'attributes', 
     'printComposer', 
@@ -59,10 +61,13 @@ export const useFloatingPanels = ({
   statisticsPanelRef,
   analysisPanelRef,
   climaPanelRef,
+  monitoringReportPanelRef,
   mapAreaRef,
   panelWidth,
   panelPadding
 }: UseFloatingPanelsProps) => {
+
+  const dummyRef = useRef<HTMLDivElement>(null);
 
   const panelRefs = useMemo(() => ({
     tools: toolsPanelRef,
@@ -76,7 +81,8 @@ export const useFloatingPanels = ({
     statistics: statisticsPanelRef,
     analysis: analysisPanelRef,
     clima: climaPanelRef,
-  }), [attributesPanelRef, legendPanelRef, toolsPanelRef, trelloPanelRef, wfsLibraryPanelRef, helpPanelRef, printComposerPanelRef, geePanelRef, statisticsPanelRef, analysisPanelRef, climaPanelRef]);
+    monitoringReport: monitoringReportPanelRef || dummyRef,
+  }), [attributesPanelRef, legendPanelRef, toolsPanelRef, trelloPanelRef, wfsLibraryPanelRef, helpPanelRef, printComposerPanelRef, geePanelRef, statisticsPanelRef, analysisPanelRef, climaPanelRef, monitoringReportPanelRef]);
   
   const [panels, setPanels] = useState<Record<PanelId, PanelState>>({
       // Start with minimized panels off-screen or at a default position to avoid hydration errors.
@@ -91,6 +97,7 @@ export const useFloatingPanels = ({
       statistics: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
       analysis: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
       clima: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
+      monitoringReport: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex + 5 },
       help: { isMinimized: true, isCollapsed: false, position: { x: -9999, y: -9999 }, zIndex: initialZIndex },
   });
 
@@ -117,6 +124,7 @@ export const useFloatingPanels = ({
             statistics: { ...prev.statistics, position: { x: panelPadding, y: panelPadding } },
             analysis: { ...prev.analysis, position: { x: panelPadding, y: panelPadding } },
             clima: { ...prev.clima, position: { x: panelPadding, y: panelPadding } },
+            monitoringReport: { ...prev.monitoringReport, position: { x: panelPadding + 380, y: panelPadding + 60 } },
             help: { ...prev.help, position: { x: rightPanelX, y: panelPadding } },
         }));
     }
