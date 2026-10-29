@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import DraggablePanel from './DraggablePanel';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { useFirestore } from '@/firebase/provider';
+import { getDatabusFirestore } from '@/firebase/databus-client';
 import type { MonitoringReportData } from '@/hooks/useDataBusMonitoring';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -59,7 +60,8 @@ export default function MonitoringReportPanel({
   reportData,
   style,
 }: MonitoringReportPanelProps) {
-  const firestore = useFirestore();
+  const defaultFirestore = useFirestore();
+  const firestore = useMemo(() => getDatabusFirestore() || defaultFirestore, [defaultFirestore]);
   const [samples, setSamples] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activePlanillaId, setActivePlanillaId] = useState<string>('');
@@ -163,6 +165,8 @@ export default function MonitoringReportPanel({
 
   if (!reportData) return null;
 
+  const databusUrl = process.env.NEXT_PUBLIC_DATABUS_URL || 'https://dea-data-bus--studio-7793356696-41de0.us-east4.hosted.app';
+
   return (
     <>
       <DraggablePanel
@@ -182,6 +186,16 @@ export default function MonitoringReportPanel({
             <Badge variant="outline" className="text-[10px] h-5 bg-teal-500/10 text-teal-300 border-teal-500/40 uppercase">
               {reportData.basinCode ? `Cuenca ${reportData.basinCode}` : 'Campo'}
             </Badge>
+            <a
+              href={databusUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded bg-teal-600/30 hover:bg-teal-600/50 text-teal-300 border border-teal-500/40 transition-colors"
+              title="Abrir DEA Data Bus en una nueva pestaña"
+            >
+              <span>Data Bus</span>
+              <ExternalLink className="h-2.5 w-2.5" />
+            </a>
           </div>
         }
       >

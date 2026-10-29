@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { useFirestore } from '@/firebase/provider';
+import { getDatabusFirestore } from '@/firebase/databus-client';
 import type { GeoServerDiscoveredLayer, MapLayer } from '@/lib/types';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
@@ -46,7 +47,8 @@ export function extractProjectCode(projectName?: string): string {
  * Conecta con Firestore en tiempo real y provee las capas de monitoreo asociadas a cada proyecto.
  */
 export function useDataBusMonitoring() {
-  const firestore = useFirestore();
+  const defaultFirestore = useFirestore();
+  const firestore = useMemo(() => getDatabusFirestore() || defaultFirestore, [defaultFirestore]);
   const [stations, setStations] = useState<Record<string, any>>({});
   const [reports, setReports] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
