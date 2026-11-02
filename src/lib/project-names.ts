@@ -83,6 +83,7 @@ export const projectFormalNames: { [key: string]: string } = {
   'RLU011': 'Desagües Pluviales - Etapa I (Malvinas Argentinas)',
   'RLU015': 'Desagües Pluviales en la Localidad de Derqui',
   'RLU016': 'Adecuación del río Luján, Etapa 3 - Mercedes',
+  'RLU019': 'Desagües Pluviales Arroyo Bedoya',
   'RPS002': 'Ampliación Planta G. Belgrano y RSS - Quilmes Rivera',
   'RPS009': 'Desagües Pluviales en Florencio Varela, Barrios Bosques Norte y Ricardo Rojas',
   'RPS010': 'Arroyo San Juan',
