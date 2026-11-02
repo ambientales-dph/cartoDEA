@@ -830,11 +830,32 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
     };
   }, [isMapReady, activeTool, panels.monitoringReport.isMinimized, togglePanelMinimize]);
 
+  const currentProjectCode = activePortalProject || layerManagerHook.layers.find(l => (l as any).projectCode)?.projectCode || null;
+  const portalUrl = (() => {
+    const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const base = isLocal ? 'http://localhost:9000' : (process.env.NEXT_PUBLIC_PORTAL_URL || 'https://studio--studio-1428739321-e57bb.us-central1.hosted.app');
+    return currentProjectCode ? `${base}?project=${encodeURIComponent(currentProjectCode)}` : base;
+  })();
+
   return (
     <div className="flex h-screen w-screen flex-col bg-background text-foreground">
       {!initialMapState && <FirebaseErrorListener />}
       <div className="bg-gray-700/90 backdrop-blur-sm shadow-md p-2 z-20 flex items-center gap-2">
-        <DphLogoIcon className="h-8 w-8 flex-shrink-0" />
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href={portalUrl}
+                className="hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-full cursor-pointer flex-shrink-0"
+              >
+                <DphLogoIcon className="h-8 w-8 flex-shrink-0" />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Volver a Portal DEA{currentProjectCode ? ` (${currentProjectCode})` : ''}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
