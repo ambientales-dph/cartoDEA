@@ -25,10 +25,13 @@ import {
   Loader2,
   CheckCircle2,
   X,
-  Compass
+  Compass,
+  AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { evaluateReading, resolveMatrixFromPlanillaOrMedium } from '@/lib/guideline-evaluator';
+import { GuidelineAlertBadge } from './GuidelineAlertBadge';
 
 interface MonitoringReportPanelProps {
   panelRef: React.RefObject<HTMLDivElement>;
@@ -263,6 +266,9 @@ export default function MonitoringReportPanel({
                   const Icon = p.icon;
                   const isActive = p.id === activePlanillaId;
                   const count = p.items.length + p.photos.length;
+                  const pMatrix = resolveMatrixFromPlanillaOrMedium(p.id);
+                  const hasViolations = p.items.some(item => evaluateReading(pMatrix, item.analyte, item.value, item.unit || '').hasViolations);
+
                   return (
                     <button
                       key={p.id}
@@ -276,6 +282,9 @@ export default function MonitoringReportPanel({
                     >
                       <Icon className={cn("h-3.5 w-3.5", p.color)} />
                       <span>{p.label}</span>
+                      {hasViolations && (
+                        <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0" title="Contiene analitos que superan niveles guía" />
+                      )}
                       <span className="text-[10px] opacity-70 bg-black/30 px-1 rounded-full">{count}</span>
                     </button>
                   );
@@ -301,22 +310,42 @@ export default function MonitoringReportPanel({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {currentPlanilla.items.map((item) => (
-                          <TableRow key={item.id} className="border-neutral-800 hover:bg-neutral-800/50 text-xs">
+                        {currentPlanilla.items.map((item) => {
+                          const matrix = resolveMatrixFromPlanillaOrMedium(currentPlanilla.id || item.medium || item.formId);
+                          const evalResult = evaluateReading(matrix, item.analyte, item.value, item.unit || '');
+                          return (
+                          <TableRow 
+                            key={item.id} 
+                            className={cn(
+                              "border-neutral-800 hover:bg-neutral-800/50 text-xs transition-colors",
+                              evalResult.hasViolations && "bg-amber-950/20 border-l-2 border-l-amber-500"
+                            )}
+                          >
                             <TableCell className="py-2 text-[11px] text-neutral-400 font-normal">
                               {item.parameterType || 'Campo'}
                             </TableCell>
                             <TableCell className="py-2 font-medium text-white">
                               {item.analyte || '---'}
                             </TableCell>
-                            <TableCell className="py-2 text-right font-mono text-teal-300 font-semibold">
-                              {item.value ?? '---'}
+                            <TableCell className="py-2 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {evalResult.hasViolations && (
+                                  <GuidelineAlertBadge evaluation={evalResult} />
+                                )}
+                                <span className={cn(
+                                  "font-mono font-semibold",
+                                  evalResult.hasViolations ? "text-amber-400" : "text-teal-300"
+                                )}>
+                                  {item.value ?? '---'}
+                                </span>
+                              </div>
                             </TableCell>
                             <TableCell className="py-2 text-[11px] text-neutral-400">
                               {item.unit || ''}
                             </TableCell>
                           </TableRow>
-                        ))}
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
