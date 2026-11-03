@@ -11,16 +11,35 @@ export async function POST(request: NextRequest) {
     let firebase_token: string | null = null;
     const contentType = request.headers.get('content-type') || '';
 
-    // 1. Extraer el token y código de proyecto del cuerpo del POST
+    // 1. Extraer el token y parámetros contextuales del cuerpo del POST
     let project_code: string | null = null;
+    let station_id: string | null = null;
+    let station_name: string | null = null;
+    let report_id: string | null = null;
+    let report_oid: string | null = null;
+    let form_id: string | null = null;
+    let analyte: string | null = null;
+
     if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       firebase_token = formData.get('firebase_token') as string;
       project_code = (formData.get('project_code') as string) || null;
+      station_id = (formData.get('station_id') as string) || (formData.get('station') as string) || null;
+      station_name = (formData.get('station_name') as string) || null;
+      report_id = (formData.get('report_id') as string) || (formData.get('report') as string) || null;
+      report_oid = (formData.get('report_oid') as string) || null;
+      form_id = (formData.get('form_id') as string) || (formData.get('form') as string) || null;
+      analyte = (formData.get('analyte') as string) || null;
     } else {
       const body = await request.json();
       firebase_token = body.firebase_token;
       project_code = body.project_code || null;
+      station_id = body.station_id || body.station || null;
+      station_name = body.station_name || null;
+      report_id = body.report_id || body.report || null;
+      report_oid = body.report_oid || null;
+      form_id = body.form_id || body.form || null;
+      analyte = body.analyte || null;
     }
 
     if (!firebase_token) {
@@ -58,6 +77,24 @@ export async function POST(request: NextRequest) {
     const redirectUrlObj = new URL(baseRedirect);
     if (project_code) {
       redirectUrlObj.searchParams.set('project', project_code.toUpperCase().trim());
+    }
+    if (station_id) {
+      redirectUrlObj.searchParams.set('station', station_id.trim());
+    }
+    if (station_name) {
+      redirectUrlObj.searchParams.set('station_name', station_name.trim());
+    }
+    if (report_id) {
+      redirectUrlObj.searchParams.set('report', report_id.trim());
+    }
+    if (report_oid) {
+      redirectUrlObj.searchParams.set('report_oid', report_oid.trim());
+    }
+    if (form_id) {
+      redirectUrlObj.searchParams.set('form', form_id.trim());
+    }
+    if (analyte) {
+      redirectUrlObj.searchParams.set('analyte', analyte.trim());
     }
     const response = NextResponse.redirect(redirectUrlObj.toString());
     

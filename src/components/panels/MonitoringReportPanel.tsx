@@ -131,12 +131,27 @@ export default function MonitoringReportPanel({
     return Object.values(groups);
   }, [samples]);
 
-  // Seleccionar la primera planilla por defecto si cambia el reporte
+  // Seleccionar la planilla solicitada por la alerta o la primera por defecto
   useEffect(() => {
-    if (planillas.length > 0 && (!activePlanillaId || !planillas.some(p => p.id === activePlanillaId))) {
-      setActivePlanillaId(planillas[0].id);
+    if (planillas.length > 0) {
+      if (reportData?.targetPlanillaId) {
+        const target = reportData.targetPlanillaId.toLowerCase().trim();
+        const found = planillas.find(p => 
+          p.id.toLowerCase() === target ||
+          p.id.toLowerCase().includes(target) ||
+          target.includes(p.id.toLowerCase()) ||
+          p.label.toLowerCase().includes(target)
+        );
+        if (found) {
+          setActivePlanillaId(found.id);
+          return;
+        }
+      }
+      if (!activePlanillaId || !planillas.some(p => p.id === activePlanillaId)) {
+        setActivePlanillaId(planillas[0].id);
+      }
     }
-  }, [planillas, activePlanillaId]);
+  }, [planillas, activePlanillaId, reportData?.targetPlanillaId]);
 
   const currentPlanilla = useMemo(() => {
     return planillas.find(p => p.id === activePlanillaId) || planillas[0] || null;
@@ -313,12 +328,18 @@ export default function MonitoringReportPanel({
                         {currentPlanilla.items.map((item) => {
                           const matrix = resolveMatrixFromPlanillaOrMedium(currentPlanilla.id || item.medium || item.formId);
                           const evalResult = evaluateReading(matrix, item.analyte, item.value, item.unit || '');
+                          const isTargetAnalyte = Boolean(
+                            reportData?.targetAnalyte && 
+                            item.analyte && 
+                            item.analyte.toLowerCase().trim() === reportData.targetAnalyte.toLowerCase().trim()
+                          );
                           return (
                           <TableRow 
                             key={item.id} 
                             className={cn(
                               "border-neutral-800 hover:bg-neutral-800/50 text-xs transition-colors",
-                              evalResult.hasViolations && "bg-amber-950/20 border-l-2 border-l-amber-500"
+                              evalResult.hasViolations && "bg-amber-950/20 border-l-2 border-l-amber-500",
+                              isTargetAnalyte && "bg-amber-500/20 ring-1 ring-amber-400"
                             )}
                           >
                             <TableCell className="py-2 text-[11px] text-neutral-400 font-normal">

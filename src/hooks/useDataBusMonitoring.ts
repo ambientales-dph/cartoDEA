@@ -28,6 +28,8 @@ export interface MonitoringReportData {
   dateLabel: string;
   createdByEmail?: string;
   status?: string;
+  targetPlanillaId?: string;
+  targetAnalyte?: string;
 }
 
 /**

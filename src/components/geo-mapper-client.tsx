@@ -33,7 +33,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Style, Fill, Stroke, Circle as CircleStyle, Text as TextStyle } from 'ol/style';
-import { transform, transformExtent } from 'ol/proj';
+import { transform, transformExtent, fromLonLat } from 'ol/proj';
 import type { Extent } from 'ol/extent';
 import { Button } from '@/components/ui/button';
 import {
@@ -466,6 +466,89 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
       console.log(`[CartoDEA] El proyecto "${activePortalProject}" no cuenta con carpeta GIS estandarizada. Se conserva el encuadre inicial.`);
     }
   }, [isMapReady, activePortalProject, discoveredGeoServerLayers, layerManagerHook]);
+
+  const hasHandledAlertJumpRef = useRef(false);
+
+  // Detección y ejecución del salto desde Alerta Ambiental del Portal DEA
+  useEffect(() => {
+    if (!isMapReady || !mapRef.current || monitoringDiscoveredLayers.length === 0 || hasHandledAlertJumpRef.current) {
+      return;
+    }
+
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetStation = urlParams.get('station');
+    const targetStationName = urlParams.get('station_name');
+    const targetReport = urlParams.get('report');
+    const targetReportOid = urlParams.get('report_oid');
+    const targetForm = urlParams.get('form');
+    const targetAnalyte = urlParams.get('analyte');
+
+    if (!targetStation && !targetStationName && !targetReport && !targetReportOid) {
+      return;
+    }
+
+    // Buscar la capa de monitoreo que coincide con el reporte o estación
+    const matchingLayer = monitoringDiscoveredLayers.find(l => {
+      if (targetReport && l.reportId === targetReport) return true;
+      if (targetReportOid && l.reportOid?.toUpperCase() === targetReportOid.toUpperCase()) return true;
+      if (targetStation && l.stationId === targetStation) return true;
+      if (targetStationName && l.stationName?.toLowerCase().includes(targetStationName.toLowerCase())) return true;
+      return false;
+    });
+
+    if (!matchingLayer) {
+      console.warn('[CartoDEA] No se encontró capa de monitoreo para la alerta:', { targetStation, targetStationName, targetReport });
+      return;
+    }
+
+    hasHandledAlertJumpRef.current = true;
+    console.log(`🎯 [CartoDEA] Salto de alerta ejecutado: Estación ${matchingLayer.stationName}, Reporte ${matchingLayer.reportOid}, Planilla ${targetForm}`);
+
+    // 1. Añadir capa vectorial de la estación al mapa si no está
+    const layerId = `monitoring-${matchingLayer.reportId}`;
+    const alreadyInMap = layerManagerHook.layers.some(l => l.id === layerId);
+    if (!alreadyInMap) {
+      const mLayer = createMonitoringVectorLayer(matchingLayer);
+      layerManagerHook.addLayer(mLayer);
+    }
+
+    // 2. Animar cámara haciendo zoom sobre la estación de monitoreo
+    const map = mapRef.current;
+    if (map) {
+      const view = map.getView();
+      view.animate({
+        center: fromLonLat([matchingLayer.longitude, matchingLayer.latitude]),
+        zoom: 17,
+        duration: 1200,
+      });
+    }
+
+    // 3. Abrir el panel de inspección de monitoreo con la planilla activa y el analito
+    const mData: MonitoringReportData = {
+      reportId: matchingLayer.reportId,
+      reportOid: matchingLayer.reportOid || 'RM',
+      stationId: matchingLayer.stationId,
+      stationName: matchingLayer.stationName,
+      basinCode: matchingLayer.basinCode,
+      latitude: matchingLayer.latitude,
+      longitude: matchingLayer.longitude,
+      projectCode: matchingLayer.projectCode,
+      trelloCardName: matchingLayer.trelloCardName,
+      surveyId: matchingLayer.surveyId,
+      dateLabel: matchingLayer.dateLabel,
+      createdAt: matchingLayer.createdAt,
+      createdByEmail: matchingLayer.createdByEmail,
+      status: matchingLayer.status,
+      targetPlanillaId: targetForm || undefined,
+      targetAnalyte: targetAnalyte || undefined,
+    };
+
+    setSelectedMonitoringData(mData);
+    if (panels.monitoringReport.isMinimized) {
+      togglePanelMinimize('monitoringReport');
+    }
+  }, [isMapReady, monitoringDiscoveredLayers, createMonitoringVectorLayer, layerManagerHook, panels.monitoringReport.isMinimized, togglePanelMinimize]);
   const [printLayoutImage, setPrintLayoutImage] = useState<string | null>(null);
   const [isGeeAuthenticated, setIsGeeAuthenticated] = useState(false);
   const [isGeeAuthenticating, setIsGeeAuthenticating] = useState(true);
