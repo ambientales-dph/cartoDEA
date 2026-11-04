@@ -67,7 +67,8 @@ export interface MapLayer {
   isFootprint?: boolean;
   category?: string;
   downloadUrl?: string;
-  simpleStyle?: StyleOptions; // Persistent simple style state
+  simpleStyle?: StyleOptions;
+  assignedStyleId?: string; // Persistent simple style state
   graduatedSymbology?: GraduatedSymbology;
   categorizedSymbology?: CategorizedSymbology;
   labelOptions?: LabelOptions; // Added for labeling support
@@ -122,6 +123,8 @@ export interface GeoServerDiscoveredLayer {
   isDownloadOnly?: boolean;
   sizeBytes?: number;
   driveFileId?: string;
+  assignedStyleId?: string;
+  assignedStyleOptions?: StyleOptions;
   isMonitoring?: boolean;
   reportId?: string;
   reportOid?: string;

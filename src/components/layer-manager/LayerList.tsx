@@ -7,6 +7,7 @@ import LayerGroupItem from './LayerGroupItem';
 import type { CategorizedSymbology, GeoTiffStyle, GraduatedSymbology, InteractionToolId, LabelOptions, MapLayer, LayerGroup } from '@/lib/types';
 import { Layers } from 'lucide-react';
 import type { StyleOptions } from './StyleEditorDialog';
+import type { SldStyleItem } from '@/lib/sld-styles';
 import type Feature from 'ol/Feature';
 import type { Geometry } from 'ol/geom';
 
@@ -29,6 +30,7 @@ interface LayerListProps {
   onReorderLayers?: (draggedIds: string[], targetId: string | null) => void;
   onRenameLayer: (layerId: string, newName: string) => void;
   onChangeLayerStyle: (layerId: string, styleOptions: StyleOptions) => void;
+  onApplySldStyle?: (layerId: string, styleItem: SldStyleItem, persist: boolean) => void;
   onChangeLayerLabels: (layerId: string, labelOptions: LabelOptions) => void;
   onApplyGraduatedSymbology: (layerId: string, symbology: GraduatedSymbology) => void;
   onApplyCategorizedSymbology: (layerId: string, symbology: CategorizedSymbology) => void;
@@ -76,6 +78,7 @@ const LayerList: React.FC<LayerListProps> = ({
   onReorderLayers,
   onRenameLayer,
   onChangeLayerStyle,
+  onApplySldStyle,
   onChangeLayerLabels,
   onApplyGraduatedSymbology,
   onApplyCategorizedSymbology,
@@ -172,6 +175,7 @@ const LayerList: React.FC<LayerListProps> = ({
                     onExportWmsAsGeotiff={onExportWmsAsGeotiff}
                     onRenameLayer={onRenameLayer}
                     onChangeLayerStyle={onChangeLayerStyle}
+                    onApplySldStyle={onApplySldStyle}
                     onChangeLayerLabels={onChangeLayerLabels}
                     onApplyGraduatedSymbology={onApplyGraduatedSymbology}
                     onApplyCategorizedSymbology={onApplyCategorizedSymbology}
@@ -224,6 +228,7 @@ const LayerList: React.FC<LayerListProps> = ({
               onExportWmsAsGeotiff={onExportWmsAsGeotiff}
               onRenameLayer={onRenameLayer}
               onChangeLayerStyle={onChangeLayerStyle}
+              onApplySldStyle={onApplySldStyle}
               onChangeLayerLabels={onChangeLayerLabels}
               onApplyGraduatedSymbology={onApplyGraduatedSymbology}
               onApplyCategorizedSymbology={onApplyCategorizedSymbology}

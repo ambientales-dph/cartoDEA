@@ -7,8 +7,11 @@ import LayerList from '@/components/layer-manager/LayerList';
 import FileUploadControl from '@/components/layer-manager/FileUploadControl';
 import FeatureInteractionToolbar from '@/components/feature-inspection/FeatureInteractionToolbar';
 import { Separator } from '@/components/ui/separator';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import SldStylePickerDialog from '@/components/layer-manager/SldStylePickerDialog';
+import { saveLayerAssignedStyle, sldStyleToStyleOptions, type SldStyleItem } from '@/lib/sld-styles';
 import type { MapLayer, GeoServerDiscoveredLayer, LabelOptions, GraduatedSymbology, CategorizedSymbology, GeoTiffStyle, LayerGroup } from '@/lib/types';
-import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group, Folder, FolderOpen, Check, Plus, Minus, Layers, Image as ImageIcon, Download, Activity } from 'lucide-react'; 
+import { ListTree, Trash2, Database, Search, X as ClearIcon, RefreshCw, Loader2, Undo2, Target, Group, Folder, FolderOpen, Check, Plus, Minus, Layers, Image as ImageIcon, Download, Activity, Palette, Sparkles } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from "@/lib/utils";
@@ -56,6 +59,7 @@ interface LegendPanelProps {
   onReorderLayers: (draggedIds: string[], targetId: string | null) => void;
   onRenameLayer: (layerId: string, newName: string) => void;
   onChangeLayerStyle: (layerId: string, styleOptions: StyleOptions) => void;
+  onApplySldStyle?: (layerId: string, styleItem: SldStyleItem, persist: boolean) => void;
   onChangeLayerLabels: (layerId: string, labelOptions: LabelOptions) => void;
   onApplyGraduatedSymbology: (layerId: string, symbology: GraduatedSymbology) => void;
   onApplyCategorizedSymbology: (layerId: string, symbology: CategorizedSymbology) => void;
@@ -123,6 +127,8 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const [deasSearchTerm, setDeasSearchTerm] = useState('');
+  const [isDeasSldPickerOpen, setIsDeasSldPickerOpen] = useState(false);
+  const [selectedDeasLayerForSld, setSelectedDeasLayerForSld] = useState<GeoServerDiscoveredLayer | null>(null);
   
   const allLayersForSelection = useMemo(() => {
     return layers.flatMap(item => 'layers' in item ? item.layers : item);
@@ -651,70 +657,92 @@ const LegendPanel: React.FC<LegendPanelProps> = ({
                                                       };
 
                                                       return (
-                                                        <div 
-                                                          key={layer.name} 
-                                                          className={cn(
-                                                            "flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer min-w-0",
-                                                            isRaster && "hover:bg-amber-500/10",
-                                                            isMonitoring && "hover:bg-teal-500/10"
-                                                          )}
-                                                          onClick={handleLayerClick}
-                                                          title={
-                                                            isMonitoring
-                                                              ? `Monitoreo de Campo: ${layer.title}\n• Clic para cargar la estación en el mapa\n• Al hacer clic en la estación se abre el reporte técnico`
-                                                              : isRaster
-                                                                ? `Ráster: ${layer.title}${sizeLabel}\n• Clic para descargar archivo desde Google Drive\n• Añade el área de cobertura al mapa`
-                                                                : added
-                                                                  ? "Capa agregada (quitar desde la lista de capas)"
-                                                                  : "Cargar capa en el mapa"
-                                                          }
-                                                        >
-                                                          <button 
-                                                            type="button" 
-                                                            className={cn(
-                                                              "p-0.5 rounded transition-colors flex-shrink-0 flex items-center justify-center bg-transparent border-0",
-                                                              added
-                                                                ? "text-emerald-400 cursor-default"
-                                                                : isMonitoring
-                                                                  ? "text-teal-400 group-hover:text-teal-300"
+                                                        <ContextMenu key={layer.name}>
+                                                          <ContextMenuTrigger asChild>
+                                                            <div 
+                                                              className={cn(
+                                                                "flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/5 group cursor-pointer min-w-0",
+                                                                isRaster && "hover:bg-amber-500/10",
+                                                                isMonitoring && "hover:bg-teal-500/10"
+                                                              )}
+                                                              onClick={handleLayerClick}
+                                                              title={
+                                                                isMonitoring
+                                                                  ? `Monitoreo de Campo: ${layer.title}\n• Clic para cargar la estación en el mapa\n• Al hacer clic en la estación se abre el reporte técnico`
                                                                   : isRaster
-                                                                    ? "text-amber-400 group-hover:text-amber-300"
-                                                                    : "text-sky-400 group-hover:text-sky-300"
+                                                                    ? `Ráster: ${layer.title}${sizeLabel}\n• Clic para descargar archivo desde Google Drive\n• Añade el área de cobertura al mapa`
+                                                                    : added
+                                                                      ? "Capa agregada (quitar desde la lista de capas)"
+                                                                      : "Cargar capa en el mapa (clic derecho para asignar estilo)"
+                                                              }
+                                                            >
+                                                              <button 
+                                                                type="button" 
+                                                                className={cn(
+                                                                  "p-0.5 rounded transition-colors flex-shrink-0 flex items-center justify-center bg-transparent border-0",
+                                                                  added
+                                                                    ? "text-emerald-400 cursor-default"
+                                                                    : isMonitoring
+                                                                      ? "text-teal-400 group-hover:text-teal-300"
+                                                                      : isRaster
+                                                                        ? "text-amber-400 group-hover:text-amber-300"
+                                                                        : "text-sky-400 group-hover:text-sky-300"
+                                                                )}
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  handleLayerClick();
+                                                                }}
+                                                                disabled={added && !isRaster}
+                                                              >
+                                                                {added ? (
+                                                                  <Check className="h-3 w-3 stroke-[2.5]" />
+                                                                ) : isMonitoring ? (
+                                                                  <Activity className="h-3 w-3" />
+                                                                ) : isRaster ? (
+                                                                  <ImageIcon className="h-3 w-3" />
+                                                                ) : (
+                                                                  <Layers className="h-3 w-3" />
+                                                                )}
+                                                              </button>
+                                                              <span
+                                                                className={cn(
+                                                                  "text-[10px] font-normal flex-1 truncate transition-colors",
+                                                                  added
+                                                                    ? "text-emerald-300 font-medium"
+                                                                    : isRaster
+                                                                      ? "text-amber-200/90 group-hover:text-amber-100"
+                                                                      : "text-white/80 group-hover:text-white"
+                                                                )}
+                                                              >
+                                                                {layer.title}
+                                                              </span>
+                                                              {isRaster && sizeMB && (
+                                                                <span className="text-[8px] font-mono text-amber-300/80 bg-amber-400/10 px-1 py-0.2 rounded shrink-0">
+                                                                  {sizeMB} MB
+                                                                </span>
+                                                              )}
+                                                            </div>
+                                                          </ContextMenuTrigger>
+                                                          <ContextMenuContent className="bg-slate-900 border-slate-700 text-white w-56 z-50 shadow-xl">
+                                                            <ContextMenuItem onSelect={handleLayerClick} className="text-xs">
+                                                              <Plus className="mr-2 h-3.5 w-3.5 text-emerald-400" />
+                                                              {added ? "Capa agregada (clic para ver)" : "Cargar capa en el mapa"}
+                                                            </ContextMenuItem>
+                                                            {!isRaster && (
+                                                              <ContextMenuItem
+                                                                onSelect={(e) => {
+                                                                  e.preventDefault();
+                                                                  setSelectedDeasLayerForSld(layer);
+                                                                  setIsDeasSldPickerOpen(true);
+                                                                }}
+                                                                className="text-xs text-sky-300 focus:text-sky-200"
+                                                              >
+                                                                <Palette className="mr-2 h-3.5 w-3.5 text-sky-400" />
+                                                                Asignar estilo DEA (.sld)...
+                                                              </ContextMenuItem>
                                                             )}
-                                                            onClick={(e) => {
-                                                              e.stopPropagation();
-                                                              handleLayerClick();
-                                                            }}
-                                                            disabled={added && !isRaster}
-                                                          >
-                                                            {added ? (
-                                                              <Check className="h-3 w-3 stroke-[2.5]" />
-                                                            ) : isMonitoring ? (
-                                                              <Activity className="h-3 w-3" />
-                                                            ) : isRaster ? (
-                                                              <ImageIcon className="h-3 w-3" />
-                                                            ) : (
-                                                              <Layers className="h-3 w-3" />
-                                                            )}
-                                                          </button>
-                                                          <span
-                                                            className={cn(
-                                                              "text-[10px] font-normal flex-1 truncate transition-colors",
-                                                              added
-                                                                ? "text-emerald-300 font-medium"
-                                                                : isRaster
-                                                                  ? "text-amber-200/90 group-hover:text-amber-100"
-                                                                  : "text-white/80 group-hover:text-white"
-                                                            )}
-                                                          >
-                                                            {layer.title}
-                                                          </span>
-                                                          {isRaster && sizeMB && (
-                                                            <span className="text-[8px] font-mono text-amber-300/80 bg-amber-400/10 px-1 py-0.2 rounded shrink-0">
-                                                              {sizeMB} MB
-                                                            </span>
-                                                          )}
-                                                        </div>
+                                                          </ContextMenuContent>
+                                                        </ContextMenu>
                                                       );
                                                     })}
                                                   </div>

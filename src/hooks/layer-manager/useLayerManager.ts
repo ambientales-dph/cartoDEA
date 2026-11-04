@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { MapLayer, VectorMapLayer, StyleOptions, GraduatedSymbology, CategorizedSymbology, LayerGroup, PlainFeatureData, GeoTiffStyle, LabelOptions, GeoServerDiscoveredLayer } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { bbox as bboxStrategy } from 'ol/loadingstrategy';
+import { findMatchingSldStyle, sldStyleToStyleOptions, getLayerAssignedStyle, saveLayerAssignedStyle, type SldStyleItem } from '@/lib/sld-styles';
 import { exportVectorLayer, exportMultipleVectorLayers, exportWmsOrGeeAsGeotiff } from '@/services/layer-export-service';
 
 const LAYER_START_Z_INDEX = 1000;
@@ -285,6 +286,44 @@ export const useLayerManager = ({
         }
     }
   }, [layers, mapRef]);
+
+  const applySldStyle = useCallback((
+    layerId: string,
+    sldItem: SldStyleItem,
+    persist: boolean = true
+  ) => {
+    const styleOptions = sldStyleToStyleOptions(sldItem);
+    setLayers(prev => prev.map(item => {
+      const updateSingle = (l: MapLayer): MapLayer => {
+        if (l.id !== layerId) return l;
+        const updated = {
+          ...l,
+          simpleStyle: styleOptions,
+          assignedStyleId: sldItem.id,
+        };
+        if (updated.olLayer instanceof VectorLayer) {
+          updated.olLayer.setStyle(createLayerStyle(updated));
+        }
+        if (persist && l.projectCode) {
+          const cleanName = (l.layerName || l.name).includes(':')
+            ? (l.layerName || l.name).split(':')[1]
+            : (l.layerName || l.name);
+          saveLayerAssignedStyle(l.projectCode, cleanName, sldItem.id, styleOptions);
+          toast({
+            title: 'Estilo DEA asignado',
+            description: `Se guardó "${sldItem.title}" como estilo predeterminado para "${l.name}".`,
+          });
+        }
+        return updated;
+      };
+
+      if (!('layers' in item)) {
+        return updateSingle(item);
+      } else {
+        return { ...item, layers: item.layers.map(updateSingle) };
+      }
+    }));
+  }, [setLayers, createLayerStyle, toast]);
 
   const changeLayerStyle = useCallback((layerId: string, styleOptions: StyleOptions) => {
     setLayers(prev => prev.map(item => {
@@ -711,13 +750,46 @@ export const useLayerManager = ({
           features,
         });
 
-        const defaultStyle: StyleOptions = {
-          strokeColor: 'azul',
-          fillColor: 'azul',
-          lineWidth: 2,
-          lineStyle: 'solid',
-          pointSize: 6,
-        };
+                const pCode = layer.projectCode || 'GENERAL';
+        const cleanLayerName = layer.name.includes(':') ? layer.name.split(':')[1] : layer.name;
+        
+        // 1. Verificar si tiene un estilo persistente asignado en Firestore o LocalStorage
+        const savedAssigned = getLayerAssignedStyle(pCode, cleanLayerName);
+        let activeStyle: StyleOptions;
+        let activeStyleId: string | undefined = undefined;
+
+        if (layer.assignedStyleOptions) {
+          activeStyle = layer.assignedStyleOptions;
+          activeStyleId = layer.assignedStyleId;
+        } else if (savedAssigned?.options) {
+          activeStyle = savedAssigned.options;
+          activeStyleId = savedAssigned.styleId;
+        } else if (savedAssigned?.styleId) {
+          const matched = findMatchingSldStyle(savedAssigned.styleId);
+          if (matched) {
+            activeStyle = sldStyleToStyleOptions(matched);
+            activeStyleId = matched.id;
+          } else {
+            activeStyle = { strokeColor: 'azul', fillColor: 'azul', lineWidth: 2, lineStyle: 'solid', pointSize: 6 };
+          }
+        } else {
+          // 2. Coincidencia automática por nombre con los estilos SLD
+          const matchedSld = findMatchingSldStyle(layer.name, layer.title, layer.geometryType);
+          if (matchedSld) {
+            activeStyle = sldStyleToStyleOptions(matchedSld);
+            activeStyleId = matchedSld.id;
+          } else {
+            // 3. Estilo genérico por defecto
+            activeStyle = {
+              strokeColor: 'azul',
+              fillColor: 'azul',
+              lineWidth: 2,
+              lineStyle: 'solid',
+              pointSize: 6,
+            };
+          }
+        }
+        const defaultStyle: StyleOptions = activeStyle;
 
         const newMapLayer: MapLayer = {
           id: layerId,
@@ -729,6 +801,7 @@ export const useLayerManager = ({
           url: fullUrl,
           layerName: layer.name,
           simpleStyle: defaultStyle,
+          assignedStyleId: activeStyleId,
           geometryType: layer.geometryType,
           featureCount: features.length,
           isDeas: true,
@@ -931,6 +1004,7 @@ export const useLayerManager = ({
     onToggleWmsStyle: (id: string) => {},
     handleAddHybridLayer,
     handleAddGisVectorLayer,
+    applySldStyle,
     handleLoadProjectLayers,
     addGeeLayerToMap,
     reorderLayers,

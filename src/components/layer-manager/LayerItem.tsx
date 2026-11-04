@@ -32,7 +32,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider"; 
-import { Eye, EyeOff, ZoomIn, Table2, Trash2, Scissors, Percent, GripVertical, CopyPlus, Download, Edit, Palette, Tags, Waypoints, AppWindow, BarChartHorizontal, Target, Image as ImageIcon, Info, Check, Dot, MoreVertical } from 'lucide-react';
+import { Eye, EyeOff, ZoomIn, Table2, Trash2, Scissors, Percent, GripVertical, Sparkles, CopyPlus, Download, Edit, Palette, Tags, Waypoints, AppWindow, BarChartHorizontal, Target, Image as ImageIcon, Info, Check, Dot, MoreVertical } from 'lucide-react';
 import type { CategorizedSymbology, GeoTiffStyle, GraduatedSymbology, InteractionToolId, LabelOptions, MapLayer, VectorMapLayer } from '@/lib/types';
 import VectorLayer from 'ol/layer/Vector'; 
 import WebGLTileLayer from 'ol/layer/WebGLTile';
@@ -40,6 +40,8 @@ import Feature from 'ol/Feature';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import StyleEditorDialog, { type StyleOptions } from './StyleEditorDialog';
+import SldStylePickerDialog from './SldStylePickerDialog';
+import { sldStyleToStyleOptions, type SldStyleItem } from '@/lib/sld-styles';
 import LabelEditorDialog from './LabelEditorDialog';
 import GraduatedSymbologyDialog from './GraduatedSymbologyDialog';
 import CategorizedSymbologyDialog from './CategorizedSymbologyDialog';
@@ -64,6 +66,7 @@ interface LayerItemProps {
   onExportWmsAsGeotiff: (layerId: string) => void;
   onRenameLayer: (layerId: string, newName: string) => void;
   onChangeLayerStyle: (layerId: string, styleOptions: StyleOptions) => void;
+  onApplySldStyle?: (layerId: string, styleItem: SldStyleItem, persist: boolean) => void;
   onChangeLayerLabels: (layerId: string, labelOptions: LabelOptions) => void;
   onApplyGraduatedSymbology: (layerId: string, symbology: GraduatedSymbology) => void;
   onApplyCategorizedSymbology: (layerId: string, symbology: CategorizedSymbology) => void;
@@ -119,6 +122,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
   const [isLabelEditorOpen, setIsLabelEditorOpen] = useState(false);
   const [isGraduatedEditorOpen, setIsGraduatedEditorOpen] = useState(false);
   const [isCategorizedEditorOpen, setIsCategorizedEditorOpen] = useState(false);
+  const [isSldPickerOpen, setIsSldPickerOpen] = useState(false);
 
   useEffect(() => {
     if (isRenameDialogOpen) {
@@ -401,6 +405,7 @@ const LayerItem: React.FC<LayerItemProps> = ({
                 <ContextMenuSubTrigger className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simbología</ContextMenuSubTrigger>
                 <ContextMenuSubContent className="bg-gray-700 text-white border-gray-600" onCloseAutoFocus={(e) => e.preventDefault()}>
                   {isVectorLayer && <ContextMenuItem onSelect={(e) => { e.preventDefault(); setIsStyleEditorOpen(true); }} className="text-xs"><Palette className="mr-2 h-3.5 w-3.5" />Simple</ContextMenuItem>}
+                  {isVectorLayer && <ContextMenuItem onSelect={(e) => { e.preventDefault(); setIsSldPickerOpen(true); }} className="text-xs text-sky-300 focus:text-sky-200"><Sparkles className="mr-2 h-3.5 w-3.5 text-sky-400" />Estilos DEA (.sld)...</ContextMenuItem>}
                   {isVectorLayer && <ContextMenuItem onSelect={(e) => { e.preventDefault(); setIsCategorizedEditorOpen(true); }} className="text-xs"><AppWindow className="mr-2 h-3.5 w-3.5" />Por Categorías</ContextMenuItem>}
                   {(isVectorLayer || layer.type === 'geotiff' || layer.type === 'gee') && <ContextMenuItem onSelect={(e) => { e.preventDefault(); setIsGraduatedEditorOpen(true); }} className="text-xs"><Waypoints className="mr-2 h-3.5 w-3.5" />Graduada</ContextMenuItem>}
                   {layer.type === 'wfs' && (
@@ -469,6 +474,24 @@ const LayerItem: React.FC<LayerItemProps> = ({
               </AlertDialogContent>
             </AlertDialog>
             
+                        {isVectorLayer && (
+              <SldStylePickerDialog
+                isOpen={isSldPickerOpen}
+                onClose={() => setIsSldPickerOpen(false)}
+                layerName={layer.layerName || layer.name}
+                layerTitle={layer.name}
+                projectCode={layer.projectCode}
+                currentStyleId={layer.assignedStyleId}
+                currentGeomType={layer.geometryType}
+                onApplyStyle={(styleItem, persist) => {
+                  if (props.onApplySldStyle) {
+                    props.onApplySldStyle(layer.id, styleItem, persist);
+                  } else {
+                    props.onChangeLayerStyle(layer.id, sldStyleToStyleOptions(styleItem));
+                  }
+                }}
+              />
+            )}
             {isVectorLayer && (
               <StyleEditorDialog 
                 isOpen={isStyleEditorOpen} 

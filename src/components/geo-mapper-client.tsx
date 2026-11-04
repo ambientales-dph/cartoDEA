@@ -1049,6 +1049,7 @@ export function GeoMapperClient({ initialMapState }: GeoMapperClientProps) {
             onSetLayerOpacity={layerManagerHook.setLayerOpacity}
             onReorderLayers={layerManagerHook.reorderLayers}
             onAddLayer={layerManagerHook.addLayer}
+            onApplySldStyle={layerManagerHook.applySldStyle}
             activeTool={featureInspectionHook.activeTool}
             onSetActiveTool={featureInspectionHook.setActiveTool}
             onClearSelection={featureInspectionHook.clearSelection}
