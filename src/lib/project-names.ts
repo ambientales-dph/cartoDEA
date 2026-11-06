@@ -64,6 +64,7 @@ export const projectFormalNames: { [key: string]: string } = {
   'RSA062': 'Coronel Suárez (nombre a definir)',
   'RSA063': 'Saneamiento Loteo Chacra 196 - Gral. La Madrid',
   'RSA069': 'Entubamiento Canal Llambías - Trenque Lauquen',
+  'RSA_HUMEDALES': 'Consultoría Humedales - Cuenca del Salado',
 
   // Proyectos Relevados en Drive (Cuencas EIAS Ambientales)
   'ARR002': 'Desagües Pluviales en Barrio España - Rojas',
